@@ -126,6 +126,14 @@ fn field_to_world(field: Field, local: vec2<f32>) -> vec2<f32> {
     return field.min_corner.xz + field_turn(field, local);
 }
 
+/// A point of the field, in metres along its axes from its minimum corner,
+/// in the space the field's patterns are read in. Without an anchor that is
+/// world XZ, exactly as `field_to_world` gives it.
+fn field_to_steady(field: Field, local: vec2<f32>) -> vec2<f32> {
+    let x = field.axis.zw;
+    return field.anchor.xy + (x * local.x + vec2<f32>(-x.y, x.x) * local.y);
+}
+
 @compute @workgroup_size(64)
 fn cull(@builtin(global_invocation_id) id: vec3<u32>) {
     let index = id.x;
@@ -322,7 +330,7 @@ fn evaluate(chunk: Chunk, field: Field, index: u32) -> Generated {
     var outward = vec2<f32>(0.0);
     if field.tufts.x > 0.0 {
         let size = field.tufts.y;
-        let q = (field.min_corner.xz + local) / size;
+        let q = (field.anchor.xy + local) / size;
         let tuft = tuft_at(q);
         outward = q - tuft.xy;
         local -= outward * min(field.tufts.x * (0.6 + 0.8 * tuft.z), 0.95) * size;
@@ -340,6 +348,8 @@ fn evaluate(chunk: Chunk, field: Field, index: u32) -> Generated {
     }
     let at = field_to_world(field, local);
     let root = vec3<f32>(at.x, ground, at.y);
+    // Where the patterns are read: world XZ, or the place the game named.
+    let steady = field_to_steady(field, local);
 
     var falloff = 1.0;
     var distance_to_eye = 0.0;
@@ -353,7 +363,7 @@ fn evaluate(chunk: Chunk, field: Field, index: u32) -> Generated {
     var bare = 1.0;
     if field.tufts.z >= 0.0 {
         let threshold = field.tufts.z;
-        bare = smoothstep(threshold - 0.05, threshold + 0.05, bare_noise(root.xz, field.tufts.w));
+        bare = smoothstep(threshold - 0.05, threshold + 0.05, bare_noise(steady, field.tufts.w));
     }
     let tile_size = field.extent.w;
     let candidate_density = f32(TILE_POINTS) / (tile_size * tile_size);
@@ -366,7 +376,7 @@ fn evaluate(chunk: Chunk, field: Field, index: u32) -> Generated {
     var entry = chunk.ids.x;
     var look = field;
     if field.mix.z > 1.5 {
-        entry = pick_species(chunk.ids.x, field, seed, clump_of(root.xz));
+        entry = pick_species(chunk.ids.x, field, seed, clump_of(steady));
         look = fields[entry];
     }
     let h = unit(hash(seed ^ 0x68u));
@@ -393,14 +403,18 @@ fn evaluate(chunk: Chunk, field: Field, index: u32) -> Generated {
 
     var blade: BladeData;
     blade.root = root;
+    // The facing a blade carries is counted in the space of the field's
+    // patterns, and `field.anchor.z` turns it into the world: the draw takes
+    // random numbers from its bits, so they must not change with the world.
     blade.facing = unit(hash(seed ^ 0x66u));
     if dot(outward, outward) > 1e-8 {
         // Tufted blades lean out from the tuft's centre: the tighter the
         // tufts, the more of them.
-        let random = vec2<f32>(sin(blade.facing * TAU), cos(blade.facing * TAU));
+        let in_world = (blade.facing + field.anchor.z) * TAU;
+        let random = vec2<f32>(sin(in_world), cos(in_world));
         let away = mix(random, normalize(field_turn(field, outward)), min(field.tufts.x * 1.5, 1.0));
         if dot(away, away) > 1e-6 {
-            blade.facing = fract(atan2(away.x, away.y) / TAU);
+            blade.facing = fract(atan2(away.x, away.y) / TAU - field.anchor.z);
         }
     }
     blade.height = height / max(look.shape.y, 1e-3);
@@ -408,7 +422,7 @@ fn evaluate(chunk: Chunk, field: Field, index: u32) -> Generated {
     blade.seed = seed >> 24u;
     blade.lod = lod;
     blade.field = entry;
-    blade.clump = clump_of(root.xz);
+    blade.clump = clump_of(steady);
     // A trampled blade lies down away from what pushed it, and the wind moves
     // it less the flatter it lies.
     let push = trample_push(root.xz);

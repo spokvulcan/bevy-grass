@@ -276,6 +276,47 @@ impl Default for GrassFieldOverrides {
     }
 }
 
+/// Names what a field's blades are counted from, in place of where the field
+/// lies in the world.
+///
+/// Without it a field takes its seed from its corner in world space and reads
+/// its tufts, clumps, bare patches and colour patches by world X and Z, so
+/// the same field at other coordinates is another field. A game that moves
+/// its origin (a floating origin, a world drawn around the player) gives each
+/// field this, and the field keeps its blades wherever it is drawn: where
+/// each stands in the field, its height, species, colour and facing.
+///
+/// ```no_run
+/// # use bevy::prelude::*;
+/// # use bevy_grass::prelude::*;
+/// # fn setup(mut commands: Commands, mut styles: ResMut<Assets<GrassStyle>>) {
+/// commands.spawn((
+///     GrassField::new(Vec2::splat(64.0), GrassStyle::MEADOW, &mut styles),
+///     // The field of tile (3, -2) of a world of 64 m tiles, wherever the
+///     // origin is now.
+///     GrassAnchor { seed: 0x3_0002, at: Vec2::new(192.0, -128.0), axis: Vec2::X },
+/// ));
+/// # }
+/// ```
+///
+/// The wind's gusts and the trample trails are not a field's own and stay in
+/// world space.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Reflect)]
+#[reflect(Component, Debug, PartialEq)]
+pub struct GrassAnchor {
+    /// The field's seed. Two fields with the same seed, size and style grow
+    /// the same blades.
+    pub seed: u32,
+    /// Where the field's centre lies in the space its patterns are read in,
+    /// in metres. Fields whose patterns should run on into each other name
+    /// places in one such space. Keep the numbers small: the patterns are
+    /// read in 32 bits, which are right to a millimetre 10 km out.
+    pub at: Vec2,
+    /// The field's own X axis in that space. Any length: it is normalized,
+    /// and (0, 0) is +X.
+    pub axis: Vec2,
+}
+
 /// Where blade roots sit.
 #[derive(Debug, Clone, Default, PartialEq, Reflect)]
 #[reflect(Default, Debug, PartialEq)]

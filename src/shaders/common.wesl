@@ -126,7 +126,12 @@ struct Field {
     /// x: render layers the field is drawn on, one bit each; 0 while hidden.
     access: vec4<u32>,
     /// x, y: the field's own X axis in world XZ; its Z axis is (-y, x).
+    /// z, w: the same axis in the space the field's patterns are read in.
     axis: vec4<f32>,
+    /// x, y: the field's minimum corner in the space its patterns are read
+    /// in; z: added to the facing a blade carries when it is drawn, in
+    /// turns; w: 1 when the game named the place (`GrassAnchor`).
+    anchor: vec4<f32>,
 }
 
 /// One chunk. Mirrors `ChunkGpu` in `gpu_layout.rs`.

@@ -2,7 +2,7 @@ use bevy::MinimalPlugins;
 use bevy::app::{App, PostUpdate};
 use bevy::asset::{AssetApp, AssetPlugin, Handle};
 use bevy::camera::visibility::{Visibility, VisibilitySystems};
-use bevy::math::Vec3Swizzles;
+use bevy::math::{Vec3Swizzles, Vec4Swizzles};
 use bevy::transform::components::Transform;
 
 use super::*;
@@ -415,6 +415,111 @@ fn a_turn_about_y_is_followed_and_a_tilt_is_noticed() {
     );
     assert!(first_time(&mut seen, a, true), "broken again after a fix");
 }
+/// The first entry of the tables, after they settled.
+fn entry(app: &mut App) -> FieldGpu {
+    settle(app);
+    app.world().resource::<FieldTables>().fields[0]
+}
+
+fn set_transform(app: &mut App, field: Entity, transform: Transform) {
+    *app.world_mut().get_mut::<GlobalTransform>(field).unwrap() = GlobalTransform::from(transform);
+}
+
+#[test]
+fn a_field_without_an_anchor_is_counted_from_where_it_lies() {
+    let mut app = app();
+    let field = spawn_field(&mut app, ());
+    set_transform(
+        &mut app,
+        field,
+        Transform::from_xyz(40.0, 2.0, -8.0).with_rotation(Quat::from_rotation_y(0.3)),
+    );
+    let entry = entry(&mut app);
+    // Its patterns are read in world XZ, and nothing is added to a facing.
+    assert_eq!(entry.anchor.xy(), entry.min_corner.xz());
+    assert_eq!(entry.axis.zw(), entry.axis.xy());
+    assert_eq!(entry.anchor.z, 0.0);
+    assert_eq!(entry.anchor.w, 0.0);
+    // The seed is the one of its corner, so it is another field elsewhere.
+    assert_eq!(
+        entry.placement.x,
+        shader_model::hash2(entry.min_corner.x.to_bits(), entry.min_corner.z.to_bits())
+    );
+    set_transform(&mut app, field, Transform::from_xyz(41.0, 2.0, -8.0));
+    assert_ne!(self::entry(&mut app).placement.x, entry.placement.x);
+}
+
+#[test]
+fn an_anchored_field_is_the_same_field_wherever_it_lies() {
+    let mut app = app();
+    let anchor = GrassAnchor {
+        seed: 77,
+        at: Vec2::new(300.0, -120.0),
+        axis: Vec2::from_angle(0.2),
+    };
+    let field = spawn_field(&mut app, anchor);
+    let here = entry(&mut app);
+    assert_eq!(here.placement.x, 77);
+    assert_eq!(here.anchor.w, 1.0);
+    // The corner of a 32 m field, from its centre along its own axes.
+    let corner = anchor.at + turn(anchor.axis, Vec2::splat(-16.0));
+    assert!(here.anchor.xy().abs_diff_eq(corner, 1e-4));
+    assert!(here.axis.zw().abs_diff_eq(anchor.axis, 1e-6));
+
+    // Moved and turned in the world, as a moved origin does it: where it
+    // lies changes, what its blades are counted from does not.
+    set_transform(
+        &mut app,
+        field,
+        Transform::from_xyz(-900.0, 12.0, 450.0).with_rotation(Quat::from_rotation_y(-0.7)),
+    );
+    let there = entry(&mut app);
+    assert_ne!(there.min_corner, here.min_corner);
+    assert_eq!(there.placement.x, here.placement.x);
+    assert_eq!(there.anchor.xy(), here.anchor.xy());
+    assert_eq!(there.axis.zw(), here.axis.zw());
+}
+
+#[test]
+fn an_anchored_field_keeps_its_blades_facing_as_it_turns() {
+    // A blade carries its facing in the space of the patterns, as an angle
+    // from +Z toward +X, and `anchor.z` is added when it is drawn. Whatever
+    // the field's turn in the world, the blade then faces where the field's
+    // turn takes the direction it faces in the space of the patterns.
+    let anchor = GrassAnchor {
+        seed: 1,
+        at: Vec2::ZERO,
+        axis: Vec2::from_angle(0.5),
+    };
+    let direction = |turns: f32| {
+        let angle = turns * std::f32::consts::TAU;
+        Vec2::new(angle.sin(), angle.cos())
+    };
+    for yaw in [0.0_f32, 0.4, -1.3, 2.9] {
+        let mut app = app();
+        let field = spawn_field(&mut app, anchor);
+        set_transform(
+            &mut app,
+            field,
+            Transform::from_rotation(Quat::from_rotation_y(yaw)),
+        );
+        let entry = entry(&mut app);
+        let world_axis = entry.axis.xy();
+        for carried in [0.0_f32, 0.2, 0.55, 0.9] {
+            // The direction in the space of the patterns, along the field's
+            // own axes there, then along its axes in the world.
+            let steady = direction(carried);
+            let own = Vec2::new(steady.dot(anchor.axis), steady.dot(anchor.axis.perp()));
+            let expected = turn(world_axis, own);
+            let drawn = direction(carried + entry.anchor.z);
+            assert!(
+                drawn.abs_diff_eq(expected, 1e-5),
+                "{yaw} {carried}: {drawn} is not {expected}"
+            );
+        }
+    }
+}
+
 /// The version of the tables, now.
 fn version(app: &App) -> u64 {
     app.world().resource::<FieldTables>().version

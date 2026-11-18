@@ -69,7 +69,15 @@ pub(crate) struct FieldGpu {
     /// x, y: the field's own X axis in world XZ, which turns with the field
     /// about Y; its Z axis is the perpendicular (`Vec2::perp`). Positions in
     /// the field are along these axes from `min_corner`.
+    /// z, w: the field's X axis in the space its patterns are read in
+    /// (`GrassAnchor::axis`); the same as x, y without an anchor.
     pub axis: Vec4,
+    /// x, y: the field's minimum corner in the space its patterns are read
+    /// in; `min_corner`'s x and z without an anchor. z: what is added to the
+    /// facing a blade carries when it is drawn, in turns, so that the blade
+    /// faces the same way in that space however the field is turned in the
+    /// world; 0 without an anchor. w: 1 with an anchor, 0 without.
+    pub anchor: Vec4,
 }
 
 /// One chunk. Mirrors `Chunk` in `common.wesl`: 32 bytes.

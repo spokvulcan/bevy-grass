@@ -37,7 +37,15 @@ fn blade_color(instance: Instance, field: Field, t: f32) -> vec4<f32> {
     // Patches several metres across, where the blades' colour drifts toward
     // the patch colour: the noise, turned so its repeat is not along the
     // world's axes.
-    let at = instance.root.xz / (field.variation.x * 8.0);
+    // Read where the blade stands in the space of the field's patterns:
+    // world XZ, or the place the game named (`GrassAnchor`).
+    var steady = instance.root.xz;
+    if field.anchor.w > 0.5 {
+        let from_corner = instance.root.xz - field.min_corner.xz;
+        let own = vec2<f32>(dot(from_corner, field.axis.xy), dot(from_corner, vec2<f32>(-field.axis.y, field.axis.x)));
+        steady = field.anchor.xy + field.axis.zw * own.x + vec2<f32>(-field.axis.w, field.axis.z) * own.y;
+    }
+    let at = steady / (field.variation.x * 8.0);
     let uv = vec2<f32>(at.x * 0.83 - at.y * 0.56, at.x * 0.56 + at.y * 0.83);
     let noise = textureSampleLevel(noise_texture, noise_sampler, uv, 0.0).r;
     let in_patch = field.patches.w * smoothstep(0.3, 0.7, noise);

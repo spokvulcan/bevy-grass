@@ -110,7 +110,7 @@ fn blade_vertex(blade: BladeRef, eye: BladeEye) -> BladeVertex {
     // thin out to lines.
     var to_eye = select(eye.position.xz - instance.root.xz, -eye.forward.xz, eye.is_orthographic);
     to_eye = select(vec2<f32>(0.0, 1.0), normalize(to_eye), dot(to_eye, to_eye) > 1e-8);
-    let yaw = instance.facing * TAU;
+    let yaw = (instance.facing + field.anchor.z) * TAU;
     var face = vec2<f32>(sin(yaw), cos(yaw));
     let facing_eye = dot(face, to_eye);
     let edge_on = 1.0 - abs(facing_eye);

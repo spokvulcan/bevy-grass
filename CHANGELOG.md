@@ -3,6 +3,21 @@
 All notable changes to bevy_grass, newest first. Until 1.0 any release may
 break the API; each breaking change below says what to write instead.
 
+## This fork, on top of 0.20.6
+
+This is a copy of bevy_grass 0.20.6 with a few changes for a game that draws
+its world around a moving origin. Nothing changes for a field that does not
+use them.
+
+**Added**
+
+- `GrassAnchor { seed, at, axis }`, a component beside `GrassField`: the
+  field's seed, and the place its tufts, clumps, bare patches and colour
+  patches are read at, named by the game in place of where the field lies in
+  the world. A blade's facing is counted there too. A field with an anchor
+  keeps its blades when the origin moves and the field is drawn at other
+  coordinates. The wind's gusts and the trample trails stay in world space.
+
 ## 0.20.6 (October 24, 2026)
 
 Strategy cameras, terrain built from code, and no more blinking blades.

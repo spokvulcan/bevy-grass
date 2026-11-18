@@ -22,7 +22,7 @@ use bevy::transform::TransformSystems;
 use bevy::transform::components::GlobalTransform;
 
 use crate::api::{
-    GrassBlade, GrassField, GrassFieldOverrides, GrassGround, GrassSpecies, GrassStyle,
+    GrassAnchor, GrassBlade, GrassField, GrassFieldOverrides, GrassGround, GrassSpecies, GrassStyle,
 };
 use crate::edit::{self, EditLayers};
 use crate::gpu_layout::{ChunkGpu, FieldGpu, NO_MAP};
@@ -167,6 +167,7 @@ struct EntryKey {
     corner: Vec3,
     axis: Vec2,
     access: u32,
+    anchor: Option<GrassAnchor>,
     /// The mask, and its offset in the mask table, in texels.
     mask: Option<(MaskKey, u32)>,
     /// The heightmap, its offset in the height table and its scale.
@@ -331,6 +332,7 @@ type FieldChanged = (
         Changed<GrassField>,
         Changed<GlobalTransform>,
         Changed<GrassFieldOverrides>,
+        Changed<GrassAnchor>,
     )>,
 );
 
@@ -565,6 +567,7 @@ type FieldInputs<'a> = (
     &'a InheritedVisibility,
     Option<&'a RenderLayers>,
     Option<&'a GrassFieldOverrides>,
+    Option<&'a GrassAnchor>,
 );
 
 /// Where a field is and which views draw it.
@@ -576,6 +579,8 @@ struct Placement {
     /// The field's X axis in world XZ.
     axis: Vec2,
     access: u32,
+    /// The seed and the place the game named, if it named them.
+    anchor: Option<GrassAnchor>,
 }
 
 impl Placement {
@@ -584,6 +589,7 @@ impl Placement {
         transform: &GlobalTransform,
         visibility: InheritedVisibility,
         layers: Option<&RenderLayers>,
+        anchor: Option<&GrassAnchor>,
     ) -> Self {
         let frame = FieldFrame::of(field, transform);
         Self {
@@ -591,6 +597,7 @@ impl Placement {
             corner: Vec3::new(frame.corner.x, transform.translation().y, frame.corner.y),
             axis: frame.axis,
             access: access(visibility.get(), layers),
+            anchor: anchor.copied(),
         }
     }
 }
@@ -601,7 +608,7 @@ fn patch_access(tables: &mut FieldTables, fields: &Query<FieldInputs>) {
     let mut entries = tables.fields.as_ref().clone();
     let mut slots = tables.slots.as_ref().clone();
     for slot in &mut slots {
-        let Ok((_, _, _, visibility, layers, _)) = fields.get(slot.entity) else {
+        let Ok((_, _, _, visibility, layers, ..)) = fields.get(slot.entity) else {
             continue;
         };
         let bits = access(visibility.get(), layers);
@@ -676,6 +683,7 @@ impl Plan<'_> {
             corner: input.placement.corner,
             axis: input.placement.axis,
             access: input.placement.access,
+            anchor: input.placement.anchor,
             mask: input.mask.as_ref().map(|mask| (mask.key, self.mask_offset)),
             height: input
                 .height
@@ -724,7 +732,7 @@ fn gather<'a>(
     edits: &'a EditLayers,
 ) -> Option<Vec<Input<'a>>> {
     let mut inputs = Vec::with_capacity(sorted.len());
-    for (entity, field, transform, visibility, layers, overrides) in sorted {
+    for (entity, field, transform, visibility, layers, overrides, anchor) in sorted {
         let layer = edits.layer_of(*entity, field);
         let mask = match &field.density_map {
             Some(handle) => {
@@ -760,7 +768,7 @@ fn gather<'a>(
         };
         inputs.push(Input {
             entity: *entity,
-            placement: Placement::of(field, transform, **visibility, *layers),
+            placement: Placement::of(field, transform, **visibility, *layers, *anchor),
             overrides: overrides.copied().unwrap_or_default(),
             style_id: field.style.id(),
             style: styles.get(&field.style)?,
@@ -1144,6 +1152,52 @@ fn look_entry(
     }
 }
 
+/// What a field's blades are counted from: its seed, and the space its
+/// patterns are read in. Without a [`GrassAnchor`] that is where the field
+/// lies in the world, with exactly the numbers it had before there were
+/// anchors.
+struct Steady {
+    seed: u32,
+    /// The field's minimum corner in the space of its patterns.
+    corner: Vec2,
+    /// The field's X axis in that space.
+    axis: Vec2,
+    /// What is added to the facing a blade carries when it is drawn, in
+    /// turns. A blade carries its facing in the space of the patterns, so
+    /// that a field drawn turned another way keeps each blade facing as it
+    /// did on its ground.
+    facing: f32,
+}
+
+impl Steady {
+    fn of(anchor: Option<GrassAnchor>, size: Vec2, corner: Vec3, axis: Vec2) -> Self {
+        match anchor {
+            Some(anchor) => {
+                let steady_axis = anchor.axis.normalize_or(Vec2::X);
+                // How far the field is turned in the world beyond its turn
+                // in the space of its patterns. A facing is counted from +Z
+                // toward +X, so a turn of the axis from +X toward +Z takes
+                // it down.
+                let turned = axis.y.atan2(axis.x) - steady_axis.y.atan2(steady_axis.x);
+                Self {
+                    seed: anchor.seed,
+                    corner: anchor.at + turn(steady_axis, -size * 0.5),
+                    axis: steady_axis,
+                    facing: -turned / std::f32::consts::TAU,
+                }
+            }
+            // The seed comes from where the field is, not from its entity, so
+            // the same field looks the same however the scene was spawned.
+            None => Self {
+                seed: shader_model::hash2(corner.x.to_bits(), corner.z.to_bits()),
+                corner: Vec2::new(corner.x, corner.z),
+                axis,
+                facing: 0.0,
+            },
+        }
+    }
+}
+
 /// A field's entries: its own blades first, then each species, all repeating
 /// the field's placement.
 fn field_entries(plan: &Plan) -> Vec<FieldGpu> {
@@ -1159,7 +1213,9 @@ fn field_entries(plan: &Plan) -> Vec<FieldGpu> {
         corner,
         axis,
         access,
+        anchor,
     } = *placement;
+    let steady = Steady::of(anchor, size, corner, axis);
     let overrides = &plan.input.overrides;
     let layout =
         ChunkLayout::for_density(CHUNK_SIZE, style.density * overrides.density_scale.max(0.0));
@@ -1176,10 +1232,8 @@ fn field_entries(plan: &Plan) -> Vec<FieldGpu> {
     let field_entry = FieldGpu {
         min_corner: corner.extend(0.0),
         extent: Vec4::new(size.x, size.y, height_scale, layout.tile_size),
-        // The seed comes from where the field is, not from its entity, so
-        // the same field looks the same however the scene was spawned.
         placement: UVec4::new(
-            shader_model::hash2(corner.x.to_bits(), corner.z.to_bits()),
+            steady.seed,
             layout.tiles_per_side,
             mask_offset,
             height_offset,
@@ -1205,7 +1259,13 @@ fn field_entries(plan: &Plan) -> Vec<FieldGpu> {
             variation.bare_patch_size.max(0.01),
         ),
         access: UVec4::new(access, 0, 0, 0),
-        axis: axis.extend(0.0).extend(0.0),
+        axis: axis.extend(steady.axis.x).extend(steady.axis.y),
+        anchor: Vec4::new(
+            steady.corner.x,
+            steady.corner.y,
+            steady.facing,
+            if anchor.is_some() { 1.0 } else { 0.0 },
+        ),
         ..FieldGpu::default()
     };
     let tallest = plan

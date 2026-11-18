@@ -6,11 +6,12 @@ use bevy::color::Color;
 use bevy::ecs::change_detection::{DetectChanges, Ref};
 use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
-use bevy::ecs::reflect::ReflectComponent;
+use bevy::ecs::reflect::{ReflectComponent, ReflectResource};
+use bevy::ecs::resource::Resource;
 use bevy::ecs::system::{Local, Query, Res};
 use bevy::image::Image;
 use bevy::log::warn;
-use bevy::math::{Vec2, Vec3};
+use bevy::math::{DVec2, Vec2, Vec3};
 use bevy::mesh::Mesh;
 
 use bevy::platform::collections::HashSet;
@@ -316,6 +317,22 @@ pub struct GrassAnchor {
     /// and (0, 0) is +X.
     pub axis: Vec2,
 }
+
+/// How far the game's origin has moved, for what the grass keeps on the
+/// ground.
+///
+/// Trampled grass is kept in cells counted from the world's origin, so a
+/// game that moves its origin gives every trail other cells, and the grass
+/// stands up. Such a game keeps this at how far its origin has moved in all:
+/// it is added to world X and Z where the cells are counted. When everything
+/// moves by `d` in world space, take `d` off this in the same frame, and the
+/// trails stay on their ground.
+///
+/// It may grow without end: only what is left after whole trample windows
+/// reaches the graphics card.
+#[derive(Resource, Debug, Clone, Copy, PartialEq, Default, Reflect)]
+#[reflect(Resource, Default, Debug, PartialEq)]
+pub struct GrassDrift(pub DVec2);
 
 /// Leans a field: its roots are moved sideways by how high their ground is.
 ///

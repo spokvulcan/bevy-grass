@@ -70,7 +70,7 @@ mod trample;
 pub mod wind;
 
 pub use api::{
-    GrassAnchor, GrassBlade, GrassCamera, GrassField, GrassFieldOverrides, GrassGround,
+    GrassAnchor, GrassBlade, GrassCamera, GrassDrift, GrassField, GrassFieldOverrides, GrassGround,
     GrassInteractor, GrassInteractorFootprint, GrassInteractorSpread, GrassLean, GrassSpecies,
     GrassStyle, GrassSun, GrassVariation, GroundTint, NoGrass,
 };
@@ -283,6 +283,7 @@ impl Plugin for GrassPlugin {
         register_types(app);
         app.init_resource::<GrassWind>()
             .init_resource::<GrassWindFrame>()
+            .init_resource::<GrassDrift>()
             .init_resource::<clock::GrassClock>()
             .add_systems(Update, clock::tick)
             .init_resource::<sun::ShadowSetupReport>()
@@ -322,6 +323,7 @@ fn register_types(app: &mut App) {
         .register_type::<GrassField>()
         .register_type::<GrassFieldOverrides>()
         .register_type::<GrassAnchor>()
+        .register_type::<GrassDrift>()
         .register_type::<GrassLean>()
         .register_type::<GrassGround>()
         .register_type::<GrassInteractor>()

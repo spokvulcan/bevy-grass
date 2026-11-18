@@ -4,14 +4,13 @@ use std::sync::Arc;
 
 use bevy::camera::Camera;
 use bevy::ecs::prelude::*;
-use bevy::math::{UVec4, Vec2, Vec3};
+use bevy::math::{DVec2, UVec4, Vec2, Vec3};
 use bevy::platform::collections::HashMap;
 use bevy::render::Extract;
 use bevy::render::sync_world::RenderEntity;
 use bevy::transform::components::GlobalTransform;
 
 use super::resources::{FrameUniform, WindUniform};
-use crate::GrassSettings;
 use crate::api::{
     GrassCamera, GrassInteractor, GrassInteractorFootprint, GrassInteractorSpread, NoGrass,
     interactor_offsets,
@@ -22,6 +21,7 @@ use crate::fields::{CHUNK_SIZE, FieldTables};
 use crate::sun::GrassLightFrame;
 use crate::trample::{self, Stamp, Tracked};
 use crate::wind::GrassWindFrame;
+use crate::{GrassDrift, GrassSettings};
 
 /// What the main world handed over this frame.
 #[derive(Resource, Debug, Default)]
@@ -44,6 +44,8 @@ pub(crate) struct ExtractedGrass {
     pub tracked: HashMap<Entity, Tracked>,
     /// This frame's settings, in range.
     pub settings: GrassSettings,
+    /// How far the game's origin has moved (`GrassDrift`).
+    pub drift: DVec2,
 }
 
 /// An interactor, with its spread or footprint if it has one.
@@ -64,9 +66,14 @@ pub(crate) fn extract_grass(
     clock: Extract<Res<GrassClock>>,
     light: Extract<Res<GrassLightFrame>>,
     interactors: Extract<Query<Interactor>>,
-    (settings, patches): (Extract<Res<GrassSettings>>, Extract<Res<MaskPatches>>),
+    (settings, patches, drift): (
+        Extract<Res<GrassSettings>>,
+        Extract<Res<MaskPatches>>,
+        Extract<Res<GrassDrift>>,
+    ),
 ) {
     extracted.settings = settings.sanitized();
+    extracted.drift = drift.0;
     let rows = extracted.settings.blade_rows;
     if tables.version != extracted.tables.version {
         extracted.tables = tables.clone();

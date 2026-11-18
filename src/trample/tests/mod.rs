@@ -22,6 +22,36 @@ fn kept_discs(kept: Vec<Stamp>) -> Vec<Vec4> {
 }
 
 #[test]
+fn a_drift_keeps_every_cell_in_its_slot_however_far_the_origin_has_moved() {
+    // No drift is nothing at all, so a game that never moves its origin
+    // counts its cells as before.
+    assert_eq!(drifted(DVec2::ZERO, CELL), (Vec2::ZERO, IVec2::ZERO));
+    let side = f64::from(window_side(CELL));
+    // A point of the ground at `steady`, wherever the origin is: its world
+    // position is `steady - drift`. Its slot, and its cell number with the
+    // whole windows back in it, are the same for every drift.
+    let steady = DVec2::new(1234.6, -987.3);
+    let slot_and_cell = |drift: DVec2| {
+        let (left, whole) = drifted(drift, CELL);
+        assert!(left.cmpge(Vec2::ZERO).all() && left.cmple(Vec2::splat(side as f32)).all());
+        let world = (steady - drift).as_vec2();
+        let cell = ((world + left) / CELL).floor().as_ivec2();
+        (crate::mirror::trample_slot(cell), cell + whole)
+    };
+    let home = slot_and_cell(DVec2::ZERO);
+    for drift in [
+        DVec2::new(300.7, -90.3),
+        DVec2::new(-1000.0, 2000.0),
+        DVec2::new(side, -side),
+        DVec2::new(123_456.25, -654_321.75),
+    ] {
+        assert_eq!(slot_and_cell(drift), home, "with a drift of {drift}");
+    }
+    // A drift that is no number is no drift.
+    assert_eq!(drifted(DVec2::NAN, CELL), (Vec2::ZERO, IVec2::ZERO));
+}
+
+#[test]
 fn an_interactor_fades_out_as_it_rises_above_the_grass() {
     // No limit, or no ground to measure from: always full.
     assert_eq!(reach(None, 50.0, Some(0.0)), 1.0);

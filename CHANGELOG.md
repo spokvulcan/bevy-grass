@@ -16,7 +16,12 @@ use them.
   patches are read at, named by the game in place of where the field lies in
   the world. A blade's facing is counted there too. A field with an anchor
   keeps its blades when the origin moves and the field is drawn at other
-  coordinates. The wind's gusts and the trample trails stay in world space.
+  coordinates. The wind's gusts stay in world space: a game shifts them
+  through `GrassWindFrame::gust_offset`. For the trample trails see
+  `GrassDrift`.
+- `GrassDrift`, a resource: how far the game's origin has moved. Trample
+  cells are counted with it added, so trails stay on their ground when the
+  origin moves and everything is drawn at other coordinates.
 - `GrassLean { per_metre, level }`, a component beside `GrassField`: roots
   are moved sideways by how far their ground lies above a level. It is the
   part of a tilt that says where blades stand, for a round world whose

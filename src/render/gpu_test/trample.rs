@@ -96,6 +96,83 @@ fn gpu_trampled_grass_lies_down_stays_put_and_recovers() {
 
 #[test]
 #[ignore = "needs a GPU: cargo test -- --ignored gpu"]
+fn gpu_a_trail_stays_on_its_ground_when_the_origin_moves() {
+    let mut app = headless_app();
+    app.insert_resource(GrassWind {
+        strength: 0.0,
+        ..GrassWind::CALM
+    });
+    let at = Vec2::new(4.0, 12.0);
+    let interactor = app
+        .world_mut()
+        .spawn((
+            GrassInteractor {
+                radius: 1.0,
+                strength: 1.0,
+                ..Default::default()
+            },
+            Transform::from_xyz(at.x, 0.5, at.y),
+        ))
+        .id();
+    // Bends of the blades whose roots are within `reach` of `at`.
+    let near = |app: &mut App, at: Vec2, reach: f32| -> Vec<(Vec2, Vec2)> {
+        gpu_bends(app)
+            .into_iter()
+            .filter(|(root, _)| root.distance(at) < reach)
+            .collect()
+    };
+    let mut ready = false;
+    for _ in 0..600 {
+        app.update();
+        if near(&mut app, at, 0.5).len() > 20 {
+            ready = true;
+            break;
+        }
+    }
+    assert!(
+        ready,
+        "no grass appeared around the interactor in 600 frames"
+    );
+    assert!(
+        near(&mut app, at, 0.5)
+            .iter()
+            .all(|(_, bend)| bend.length() > 0.8)
+    );
+
+    // The interactor leaves, and the game moves its origin: the field and
+    // the camera get other coordinates, by no whole number of cells or of
+    // windows, and the game says by how much.
+    app.world_mut().despawn(interactor);
+    let moved = Vec3::new(-300.7, 0.0, 90.3);
+    let mut everything = app
+        .world_mut()
+        .query_filtered::<&mut Transform, Or<(With<GrassField>, With<Camera3d>)>>();
+    for mut transform in everything.iter_mut(app.world_mut()) {
+        transform.translation += moved;
+    }
+    app.world_mut().resource_mut::<crate::GrassDrift>().0 -= moved.xz().as_dvec2();
+    for _ in 0..6 {
+        app.update();
+    }
+    // The trail lies where its ground went, and nowhere else.
+    let there = at + moved.xz();
+    let trail = near(&mut app, there, 0.5);
+    assert!(!trail.is_empty());
+    assert!(
+        trail.iter().all(|(_, bend)| bend.length() > 0.6),
+        "the trail did not go with its ground"
+    );
+    let beside: Vec<f32> = gpu_bends(&mut app)
+        .into_iter()
+        .filter(|(root, _)| root.distance(there) > 3.0)
+        .map(|(_, bend)| bend.length())
+        .collect();
+    assert!(!beside.is_empty());
+    assert!(beside.iter().all(|&b| b < 0.1), "grass lies flat elsewhere");
+}
+
+#[test]
+#[ignore = "needs a GPU: cargo test -- --ignored gpu"]
 fn gpu_an_interactor_with_a_height_limit_only_tramples_near_the_ground() {
     let mut app = headless_app();
     app.insert_resource(GrassWind {

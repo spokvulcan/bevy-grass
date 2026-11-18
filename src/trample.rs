@@ -10,7 +10,7 @@
 //! slots whose world cell has just come into the window, and trails stay in
 //! world space.
 
-use bevy::math::{IVec2, Mat3, Mat4, Vec2, Vec3, Vec3Swizzles, Vec4, Vec4Swizzles};
+use bevy::math::{DVec2, IVec2, Mat3, Mat4, Vec2, Vec3, Vec3Swizzles, Vec4, Vec4Swizzles};
 use bevy::transform::components::GlobalTransform;
 
 use crate::GrassInteractorFootprint;
@@ -30,6 +30,29 @@ pub(crate) fn window_side(cell: f32) -> f32 {
 /// `center` (world XZ).
 pub(crate) fn window_origin(center: Vec2, cell: f32) -> IVec2 {
     (center / cell).floor().as_ivec2() - IVec2::splat(TEXELS / 2)
+}
+
+/// A drift ([`GrassDrift`](crate::GrassDrift)) as a window of `cell`-metre
+/// cells takes it: what is left of it after whole windows are taken off, in
+/// metres, and how many cells those whole windows are.
+///
+/// A cell's slot is its number modulo the window, so whole windows change no
+/// slot. Only what is left is added to positions on the graphics card, which
+/// keeps those numbers small however far the origin has moved. The whole
+/// windows are added to the cell numbers that are kept from frame to frame,
+/// so the frame in which a window more is taken off is like any other.
+pub(crate) fn drifted(drift: DVec2, cell: f32) -> (Vec2, IVec2) {
+    let side = f64::from(window_side(cell));
+    let drift = if drift.is_finite() {
+        drift
+    } else {
+        DVec2::ZERO
+    };
+    let whole = (drift / side).floor();
+    (
+        (drift - whole * side).as_vec2(),
+        (whole * f64::from(TEXELS)).as_ivec2(),
+    )
 }
 
 /// What decides where a camera's trample window sits.

@@ -73,7 +73,9 @@ struct View {
     bucket_lod: vec4<u32>,
     /// xy: the trample window's lowest cell this frame; zw: last frame's.
     trample_origin: vec4<i32>,
-    /// x: cell size in metres; y: flattening recovered this frame (0–1).
+    /// x: cell size in metres; y: flattening recovered this frame (0–1);
+    /// z, w: added to world XZ before trample cells are counted, the game's
+    /// drift less whole windows.
     trample_step: vec4<f32>,
     /// xyz: direction to the first directional light; w: 1 when there is one.
     sun: vec4<f32>,

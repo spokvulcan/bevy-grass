@@ -73,6 +73,8 @@ pub(crate) struct ViewUniformData {
     /// The trample window's lowest cell this frame (xy) and last frame (zw).
     pub trample_origin: IVec4,
     /// Cell size in metres, and how much flattening recovers this frame.
+    /// z, w: what is added to world X and Z before trample cells are counted,
+    /// the game's drift less whole windows (`trample::drifted`).
     pub trample_step: Vec4,
     /// Direction to the first directional light, w 1 when there is one.
     pub sun: Vec4,
@@ -476,7 +478,12 @@ fn update_trample(
         cell,
         &extracted.tables,
     );
-    let origin = trample::window_origin(center, cell);
+    // Cells are counted where the game's drift puts a point, so that a game
+    // which moves its origin keeps its trails. The cell numbers kept from
+    // frame to frame have the whole windows of the drift in them; the ones
+    // the shaders see do not.
+    let (drift, whole) = trample::drifted(extracted.drift, cell);
+    let origin = trample::window_origin(center + drift, cell);
     // Before the first frame, and when the cells change size, every slot
     // counts as newly in the window, which clears it.
     if buffers.trample_cell != cell {
@@ -485,8 +492,10 @@ fn update_trample(
     }
     let previous = buffers
         .trample_origin
-        .unwrap_or(origin + IVec2::splat(trample::TEXELS * 4));
-    buffers.trample_origin = Some(origin);
+        .map_or(origin + IVec2::splat(trample::TEXELS * 4), |kept| {
+            kept.wrapping_sub(whole)
+        });
+    buffers.trample_origin = Some(origin.wrapping_add(whole));
 
     let stamped = trample::select_interactors(
         &extracted.interactors,
@@ -495,7 +504,15 @@ fn update_trample(
         cell,
         settings.max_interactor_radius,
     );
-    let words: Vec<[Vec4; 3]> = stamped.into_iter().map(trample::Stamp::gpu).collect();
+    let words: Vec<[Vec4; 3]> = stamped
+        .into_iter()
+        .map(|mut stamp| {
+            // Where the stamp is as the cells are counted.
+            stamp.disc.x += drift.x;
+            stamp.disc.y += drift.y;
+            stamp.gpu()
+        })
+        .collect();
     if !words.is_empty() {
         queue.write_buffer(&buffers.interactors, 0, bytemuck::cast_slice(&words));
     }
@@ -504,7 +521,7 @@ fn update_trample(
     let elapsed = (extracted.frame.time - extracted.frame.previous_time).max(0.0);
     data.interactor_count = buffers.interactor_count;
     data.trample_origin = IVec4::new(origin.x, origin.y, previous.x, previous.y);
-    data.trample_step = Vec4::new(cell, elapsed / settings.trample_recovery, 0.0, 0.0);
+    data.trample_step = Vec4::new(cell, elapsed / settings.trample_recovery, drift.x, drift.y);
 }
 
 /// Advances the overflow check: maps a copied buffer, or reports a mapped one.

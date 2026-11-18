@@ -22,7 +22,8 @@ use bevy::transform::TransformSystems;
 use bevy::transform::components::GlobalTransform;
 
 use crate::api::{
-    GrassAnchor, GrassBlade, GrassField, GrassFieldOverrides, GrassGround, GrassSpecies, GrassStyle,
+    GrassAnchor, GrassBlade, GrassField, GrassFieldOverrides, GrassGround, GrassLean, GrassSpecies,
+    GrassStyle,
 };
 use crate::edit::{self, EditLayers};
 use crate::gpu_layout::{ChunkGpu, FieldGpu, NO_MAP};
@@ -168,6 +169,7 @@ struct EntryKey {
     axis: Vec2,
     access: u32,
     anchor: Option<GrassAnchor>,
+    lean: GrassLean,
     /// The mask, and its offset in the mask table, in texels.
     mask: Option<(MaskKey, u32)>,
     /// The heightmap, its offset in the height table and its scale.
@@ -333,6 +335,7 @@ type FieldChanged = (
         Changed<GlobalTransform>,
         Changed<GrassFieldOverrides>,
         Changed<GrassAnchor>,
+        Changed<GrassLean>,
     )>,
 );
 
@@ -568,6 +571,7 @@ type FieldInputs<'a> = (
     Option<&'a RenderLayers>,
     Option<&'a GrassFieldOverrides>,
     Option<&'a GrassAnchor>,
+    Option<&'a GrassLean>,
 );
 
 /// Where a field is and which views draw it.
@@ -581,6 +585,8 @@ struct Placement {
     access: u32,
     /// The seed and the place the game named, if it named them.
     anchor: Option<GrassAnchor>,
+    /// How its roots lean. None is no lean.
+    lean: GrassLean,
 }
 
 impl Placement {
@@ -590,6 +596,7 @@ impl Placement {
         visibility: InheritedVisibility,
         layers: Option<&RenderLayers>,
         anchor: Option<&GrassAnchor>,
+        lean: Option<&GrassLean>,
     ) -> Self {
         let frame = FieldFrame::of(field, transform);
         Self {
@@ -598,6 +605,7 @@ impl Placement {
             axis: frame.axis,
             access: access(visibility.get(), layers),
             anchor: anchor.copied(),
+            lean: lean.copied().unwrap_or_default(),
         }
     }
 }
@@ -684,6 +692,7 @@ impl Plan<'_> {
             axis: input.placement.axis,
             access: input.placement.access,
             anchor: input.placement.anchor,
+            lean: input.placement.lean,
             mask: input.mask.as_ref().map(|mask| (mask.key, self.mask_offset)),
             height: input
                 .height
@@ -732,7 +741,7 @@ fn gather<'a>(
     edits: &'a EditLayers,
 ) -> Option<Vec<Input<'a>>> {
     let mut inputs = Vec::with_capacity(sorted.len());
-    for (entity, field, transform, visibility, layers, overrides, anchor) in sorted {
+    for (entity, field, transform, visibility, layers, overrides, anchor, lean) in sorted {
         let layer = edits.layer_of(*entity, field);
         let mask = match &field.density_map {
             Some(handle) => {
@@ -768,7 +777,7 @@ fn gather<'a>(
         };
         inputs.push(Input {
             entity: *entity,
-            placement: Placement::of(field, transform, **visibility, *layers, *anchor),
+            placement: Placement::of(field, transform, **visibility, *layers, *anchor, *lean),
             overrides: overrides.copied().unwrap_or_default(),
             style_id: field.style.id(),
             style: styles.get(&field.style)?,
@@ -1214,6 +1223,7 @@ fn field_entries(plan: &Plan) -> Vec<FieldGpu> {
         axis,
         access,
         anchor,
+        lean,
     } = *placement;
     let steady = Steady::of(anchor, size, corner, axis);
     let overrides = &plan.input.overrides;
@@ -1266,6 +1276,7 @@ fn field_entries(plan: &Plan) -> Vec<FieldGpu> {
             steady.facing,
             if anchor.is_some() { 1.0 } else { 0.0 },
         ),
+        lean: lean.per_metre.extend(lean.level).extend(0.0),
         ..FieldGpu::default()
     };
     let tallest = plan

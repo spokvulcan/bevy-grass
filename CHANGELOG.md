@@ -17,6 +17,11 @@ use them.
   the world. A blade's facing is counted there too. A field with an anchor
   keeps its blades when the origin moves and the field is drawn at other
   coordinates. The wind's gusts and the trample trails stay in world space.
+- `GrassLean { per_metre, level }`, a component beside `GrassField`: roots
+  are moved sideways by how far their ground lies above a level. It is the
+  part of a tilt that says where blades stand, for a round world whose
+  fields each have another up. The blades still grow upright. The CPU side
+  (`GrassSampler`, brushes, edits) does not know the lean.
 
 ## 0.20.6 (October 24, 2026)
 

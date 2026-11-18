@@ -132,6 +132,9 @@ struct Field {
     /// in; z: added to the facing a blade carries when it is drawn, in
     /// turns; w: 1 when the game named the place (`GrassAnchor`).
     anchor: vec4<f32>,
+    /// x, y: metres a root is moved in world XZ for each metre its ground
+    /// lies above `min_corner.y + z`.
+    lean: vec4<f32>,
 }
 
 /// One chunk. Mirrors `ChunkGpu` in `gpu_layout.rs`.

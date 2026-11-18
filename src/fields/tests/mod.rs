@@ -520,6 +520,20 @@ fn an_anchored_field_keeps_its_blades_facing_as_it_turns() {
     }
 }
 
+#[test]
+fn a_lean_is_told_to_the_shaders_and_changing_it_rewrites_the_field() {
+    let mut app = app();
+    let field = spawn_field(&mut app, ());
+    assert_eq!(entry(&mut app).lean, Vec4::ZERO);
+    let before = version(&app);
+    app.world_mut().entity_mut(field).insert(GrassLean {
+        per_metre: Vec2::new(0.001, -0.002),
+        level: 30.0,
+    });
+    assert_eq!(entry(&mut app).lean, Vec4::new(0.001, -0.002, 30.0, 0.0));
+    assert!(version(&app) > before);
+}
+
 /// The version of the tables, now.
 fn version(app: &App) -> u64 {
     app.world().resource::<FieldTables>().version

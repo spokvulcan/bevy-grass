@@ -78,6 +78,9 @@ pub(crate) struct FieldGpu {
     /// faces the same way in that space however the field is turned in the
     /// world; 0 without an anchor. w: 1 with an anchor, 0 without.
     pub anchor: Vec4,
+    /// x, y: metres a root is moved in world XZ for each metre its ground
+    /// lies above `min_corner.y + z` (`GrassLean`). Zero without a lean.
+    pub lean: Vec4,
 }
 
 /// One chunk. Mirrors `Chunk` in `common.wesl`: 32 bytes.

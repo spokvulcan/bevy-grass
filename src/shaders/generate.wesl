@@ -156,7 +156,11 @@ fn cull(@builtin(global_invocation_id) id: vec3<u32>) {
     let high = origin + max(side_x, vec2<f32>(0.0)) + max(side_z, vec2<f32>(0.0));
     // Tufts pull blades up to one and a half tuft spacings from where they
     // were placed.
-    let spread = tallest + select(0.0, field.tufts.y * 1.5, field.tufts.x > 0.0);
+    // A leaning field moves the roots of its highest and lowest ground
+    // sideways. Without a lean this adds exactly nothing.
+    let level = field.min_corner.y + field.lean.z;
+    let leans = length(field.lean.xy) * max(abs(chunk.bounds.z - level), abs(chunk.bounds.w - level));
+    let spread = tallest + leans + select(0.0, field.tufts.y * 1.5, field.tufts.x > 0.0);
     // The chunk's ground box, grown by the tallest blade: up for its height,
     // sideways for how far it can lean or bend.
     var lo = vec3<f32>(low.x - spread, chunk.bounds.z, low.y - spread);
@@ -346,7 +350,7 @@ fn evaluate(chunk: Chunk, field: Field, index: u32) -> Generated {
     if ground < HOLE * 0.5 {
         return out;
     }
-    let at = field_to_world(field, local);
+    let at = field_to_world(field, local) + field.lean.xy * (ground - field.min_corner.y - field.lean.z);
     let root = vec3<f32>(at.x, ground, at.y);
     // Where the patterns are read: world XZ, or the place the game named.
     let steady = field_to_steady(field, local);

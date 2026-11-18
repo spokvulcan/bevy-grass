@@ -71,8 +71,8 @@ pub mod wind;
 
 pub use api::{
     GrassAnchor, GrassBlade, GrassCamera, GrassField, GrassFieldOverrides, GrassGround,
-    GrassInteractor, GrassInteractorFootprint, GrassInteractorSpread, GrassSpecies, GrassStyle,
-    GrassSun, GrassVariation, GroundTint, NoGrass,
+    GrassInteractor, GrassInteractorFootprint, GrassInteractorSpread, GrassLean, GrassSpecies,
+    GrassStyle, GrassSun, GrassVariation, GroundTint, NoGrass,
 };
 #[cfg(feature = "debug")]
 pub use debug::{GrassDebug, GrassDebugPlugin, GrassGizmos};
@@ -104,11 +104,11 @@ pub mod prelude {
         GrassBrushFootprint, GrassBrushShape, GrassCamera, GrassColliderBounds,
         GrassColliderSystems, GrassEdit, GrassEditOp, GrassField, GrassFieldOverrides, GrassGround,
         GrassInteractor, GrassInteractorFootprint, GrassInteractorFromCollider,
-        GrassInteractorSpread, GrassLightFrame, GrassLightPlugin, GrassLightSystems, GrassPlugin,
-        GrassPlugins, GrassQuality, GrassRegrowth, GrassSample, GrassSampler, GrassSettings,
-        GrassShadows, GrassSpecies, GrassStats, GrassStyle, GrassStyleFilePlugin, GrassSun,
-        GrassSupport, GrassSystems, GrassVariation, GrassWind, GrassWindFrame, GrassWindPlugin,
-        GrassWindSystems, GroundTint, NoGrass,
+        GrassInteractorSpread, GrassLean, GrassLightFrame, GrassLightPlugin, GrassLightSystems,
+        GrassPlugin, GrassPlugins, GrassQuality, GrassRegrowth, GrassSample, GrassSampler,
+        GrassSettings, GrassShadows, GrassSpecies, GrassStats, GrassStyle, GrassStyleFilePlugin,
+        GrassSun, GrassSupport, GrassSystems, GrassVariation, GrassWind, GrassWindFrame,
+        GrassWindPlugin, GrassWindSystems, GroundTint, NoGrass,
     };
     #[cfg(feature = "debug")]
     pub use crate::{GrassDebug, GrassDebugPlugin};
@@ -322,6 +322,7 @@ fn register_types(app: &mut App) {
         .register_type::<GrassField>()
         .register_type::<GrassFieldOverrides>()
         .register_type::<GrassAnchor>()
+        .register_type::<GrassLean>()
         .register_type::<GrassGround>()
         .register_type::<GrassInteractor>()
         .register_type::<GrassInteractorSpread>()

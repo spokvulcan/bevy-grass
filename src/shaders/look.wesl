@@ -41,7 +41,8 @@ fn blade_color(instance: Instance, field: Field, t: f32) -> vec4<f32> {
     // world XZ, or the place the game named (`GrassAnchor`).
     var steady = instance.root.xz;
     if field.anchor.w > 0.5 {
-        let from_corner = instance.root.xz - field.min_corner.xz;
+        let from_corner = instance.root.xz - field.min_corner.xz
+            - field.lean.xy * (instance.root.y - field.min_corner.y - field.lean.z);
         let own = vec2<f32>(dot(from_corner, field.axis.xy), dot(from_corner, vec2<f32>(-field.axis.y, field.axis.x)));
         steady = field.anchor.xy + field.axis.zw * own.x + vec2<f32>(-field.axis.w, field.axis.z) * own.y;
     }

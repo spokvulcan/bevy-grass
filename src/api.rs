@@ -317,6 +317,29 @@ pub struct GrassAnchor {
     pub axis: Vec2,
 }
 
+/// Leans a field: its roots are moved sideways by how high their ground is.
+///
+/// A field lies level and blades grow upright, so a field cannot be tilted.
+/// On a round world drawn around a moving origin every field should be
+/// tilted a little against the picture, and ground that lies above or below
+/// the field's own level should then stand a little to one side. This is
+/// that part of the tilt: a root is moved by `per_metre` for each metre its
+/// ground lies above `level`. The blades still grow upright.
+///
+/// The CPU side does not know the lean: [`GrassSampler`](crate::GrassSampler),
+/// brushes and edits find a point of a leaning field where it would lie
+/// without it.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Default, Reflect)]
+#[reflect(Component, Default, Debug, PartialEq)]
+pub struct GrassLean {
+    /// Metres a root is moved in world X and Z for each metre its ground
+    /// lies above `level`.
+    pub per_metre: Vec2,
+    /// The height of ground that lies where the field's transform puts it,
+    /// in metres above the transform's Y.
+    pub level: f32,
+}
+
 /// Where blade roots sit.
 #[derive(Debug, Clone, Default, PartialEq, Reflect)]
 #[reflect(Default, Debug, PartialEq)]

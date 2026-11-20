@@ -71,8 +71,8 @@ pub mod wind;
 
 pub use api::{
     GrassAnchor, GrassBlade, GrassCamera, GrassDrift, GrassField, GrassFieldOverrides, GrassGround,
-    GrassInteractor, GrassInteractorFootprint, GrassInteractorSpread, GrassLean, GrassSpecies,
-    GrassStyle, GrassSun, GrassVariation, GroundTint, NoGrass,
+    GrassInteractor, GrassInteractorFootprint, GrassInteractorSpread, GrassLean, GrassMoved,
+    GrassSpecies, GrassStyle, GrassSun, GrassVariation, GroundTint, NoGrass,
 };
 #[cfg(feature = "debug")]
 pub use debug::{GrassDebug, GrassDebugPlugin, GrassGizmos};
@@ -284,6 +284,7 @@ impl Plugin for GrassPlugin {
         app.init_resource::<GrassWind>()
             .init_resource::<GrassWindFrame>()
             .init_resource::<GrassDrift>()
+            .init_resource::<GrassMoved>()
             .init_resource::<clock::GrassClock>()
             .add_systems(Update, clock::tick)
             .init_resource::<sun::ShadowSetupReport>()
@@ -324,6 +325,7 @@ fn register_types(app: &mut App) {
         .register_type::<GrassFieldOverrides>()
         .register_type::<GrassAnchor>()
         .register_type::<GrassDrift>()
+        .register_type::<GrassMoved>()
         .register_type::<GrassLean>()
         .register_type::<GrassGround>()
         .register_type::<GrassInteractor>()

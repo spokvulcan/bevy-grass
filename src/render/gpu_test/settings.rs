@@ -453,3 +453,30 @@ fn gpu_a_high_camera_draws_grass_measured_from_the_ground() {
         );
     }
 }
+
+#[test]
+#[ignore = "needs a GPU: cargo test -- --ignored gpu"]
+fn gpu_how_the_origin_moved_reaches_the_view() {
+    use bevy::math::{Mat4, Quat};
+
+    let mut app = headless_app();
+    let mut start = (ViewUniformData::default(), 0);
+    for _ in 0..600 {
+        start = view_after(&mut app, 1);
+        if start.1 > 0 {
+            break;
+        }
+    }
+    assert_eq!(start.0.previous_from_world, Mat4::IDENTITY);
+
+    // The frame the origin moves, and the frame after, when it is still.
+    let moved =
+        Mat4::from_rotation_translation(Quat::from_rotation_x(0.01), Vec3::new(-1000.0, 3.0, 20.0));
+    app.world_mut().resource_mut::<crate::GrassMoved>().0 = moved;
+    assert_eq!(view_after(&mut app, 1).0.previous_from_world, moved);
+    app.world_mut().resource_mut::<crate::GrassMoved>().0 = Mat4::IDENTITY;
+    assert_eq!(
+        view_after(&mut app, 1).0.previous_from_world,
+        Mat4::IDENTITY
+    );
+}

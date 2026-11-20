@@ -11,7 +11,7 @@ use bevy::ecs::resource::Resource;
 use bevy::ecs::system::{Local, Query, Res};
 use bevy::image::Image;
 use bevy::log::warn;
-use bevy::math::{DVec2, Vec2, Vec3};
+use bevy::math::{DVec2, Mat4, Vec2, Vec3};
 use bevy::mesh::Mesh;
 
 use bevy::platform::collections::HashSet;
@@ -333,6 +333,20 @@ pub struct GrassAnchor {
 #[derive(Resource, Debug, Clone, Copy, PartialEq, Default, Reflect)]
 #[reflect(Resource, Default, Debug, PartialEq)]
 pub struct GrassDrift(pub DVec2);
+
+/// Where a point of the world this frame lay in the world of the last
+/// frame, for motion vectors.
+///
+/// A blade's motion is counted from where it stands now to where it stood
+/// last frame, seen by last frame's camera. A game that moves its origin
+/// moves every field and the camera in the same frame, and last frame's
+/// camera still stands in the old coordinates: every blade then seems to
+/// jump, and a temporal filter forgets the grass. Such a game sets this, in
+/// the frame its origin moves, to the motion from the new coordinates to the
+/// old, a rotation and a translation, and to the identity in every other.
+#[derive(Resource, Debug, Clone, Copy, PartialEq, Default, Reflect)]
+#[reflect(Resource, Default, Debug, PartialEq)]
+pub struct GrassMoved(pub Mat4);
 
 /// Leans a field: its roots are moved sideways by how high their ground is.
 ///

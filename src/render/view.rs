@@ -86,6 +86,8 @@ pub(crate) struct ViewUniformData {
     /// far an edge-on blade turns toward the camera, and the vertical range
     /// of stored positions.
     pub limits: Vec4,
+    /// Where a point now lay in last frame's world (`GrassMoved`).
+    pub previous_from_world: Mat4,
 }
 
 /// Where the overflow check is in its cycle.
@@ -350,6 +352,7 @@ pub(crate) fn prepare_views(
                 .filter(|_| settings.shadows.cascades() > 0),
         );
         data.sun = extracted.sun.map_or(Vec4::ZERO, |sun| sun.extend(1.0));
+        data.previous_from_world = extracted.moved;
         data.layers = layer_mask(layers);
         if has_unsupported_layer(layers) && !*warned_layers {
             *warned_layers = true;
@@ -454,6 +457,7 @@ fn view_uniform(
             settings.turn_to_camera,
             height_range,
         ),
+        previous_from_world: Mat4::IDENTITY,
     }
 }
 

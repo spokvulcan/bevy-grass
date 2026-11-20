@@ -22,6 +22,10 @@ use them.
 - `GrassDrift`, a resource: how far the game's origin has moved. Trample
   cells are counted with it added, so trails stay on their ground when the
   origin moves and everything is drawn at other coordinates.
+- `GrassMoved`, a resource: where a point of this frame's world lay in
+  last frame's, set by a game in the frame its origin moves. Motion vectors
+  carry last frame's camera through it, so a temporal filter keeps the grass
+  in that frame.
 - `GrassLean { per_metre, level }`, a component beside `GrassField`: roots
   are moved sideways by how far their ground lies above a level. It is the
   part of a tilt that says where blades stand, for a round world whose

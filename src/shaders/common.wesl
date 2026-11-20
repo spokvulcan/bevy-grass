@@ -89,6 +89,9 @@ struct View {
     /// range instance positions are stored over, in metres either side of
     /// the origin.
     limits: vec4<f32>,
+    /// Where a point now lay in last frame's world: the identity, but in the
+    /// frame a game moves its origin (`GrassMoved`).
+    previous_from_world: mat4x4<f32>,
 }
 
 /// One field. Mirrors `FieldGpu` in `gpu_layout.rs`.

@@ -100,6 +100,16 @@ the stem just below it. Nothing about how wide the blade is, or how see-through,
 is carried, as a line is one pixel wide. A blade that would be kept only for
 the shadow it casts into the view is not written.
 
+The root and tip colours are not the blade's colours at its two ends. The
+pass that draws a strand is expected to mix them in a straight line and to
+darken the root to 0.45 of it, fading to none at the tip (`STRAND_FOOT`), as
+the plant library's pass of points does. The blade's own colour runs along
+`pow(t, 0.7)` and its roots are shaded by the field's ambient occlusion. So
+the two colours are the least-squares fit of that line to the blade, as it
+would be drawn with its occlusion, at five points from root to tip
+(`STRAND_FIT`, the same numbers as `strand_colours` in the mirror). A colour
+under nothing is clamped to nothing.
+
 The grass draws no strand itself. A game hands the buffers to a pass that
 draws lines, and without one the far blades are simply not in the picture.
 The records are written by the grass's compute passes, which run before any

@@ -4,7 +4,7 @@
 use super::*;
 use crate::api::{GrassVariation, GroundTint};
 use crate::fields::FieldTables;
-use crate::mirror::{srgb_word, strand_tip, unpack_bend};
+use crate::mirror::{STRAND_ALONG, srgb_word, strand_colours, strand_tip, unpack_bend};
 use crate::render::view::{GrassStrands, STRAND_SIZE};
 
 /// One record read back: foot, tall, beside, root and tip colour.
@@ -45,7 +45,8 @@ fn gpu_strands(app: &mut App) -> (Vec<Record>, Option<GrassStrands>) {
 }
 
 /// The record `generate` should write for the blade of `words`: the same
-/// sums on the processor, for a field with none of the optional look terms.
+/// sums on the processor, for a field with none of the optional look terms:
+/// its colours fitted to a line as `mirror::strand_colours` fits them.
 fn expected(
     words: [u32; 4],
     view: &ViewUniformData,
@@ -92,15 +93,22 @@ fn expected(
         } else {
             0.0
         };
-        srgb_word(green.lerp(straw, dry))
+        let shaded = field.motion.w * (1.0 - smoothstep(0.0, 0.6, t));
+        green.lerp(straw, dry) * (1.0 - shaded)
     };
+    let (root, tip_colour) = strand_colours(STRAND_ALONG.map(colour));
     Record {
         foot,
         tall: tip.length(),
         beside: Vec2::new(tip.x, tip.z),
-        root: colour(0.0),
-        tip: colour(1.0),
+        root: srgb_word(root),
+        tip: srgb_word(tip_colour),
     }
+}
+
+fn smoothstep(low: f32, high: f32, x: f32) -> f32 {
+    let t = ((x - low) / (high - low)).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
 }
 
 /// Whether two colour words differ by at most one step in each channel.

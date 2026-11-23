@@ -370,6 +370,64 @@ pub(crate) fn strand_tip(height: f32, face: Vec2, lean: f32, bend: Vec2, droop: 
     blade_curve(height, 0.0, face * lean + bend, droop)[2]
 }
 
+/// How much darker a line that draws a strand is at its foot than at its
+/// tip: `mix(STRAND_FOOT, 1, along)` of its colour, as the plant library of
+/// the game this fork is for lights a loose strand. The WESL twin has the
+/// same name.
+pub(crate) const STRAND_FOOT: f32 = 0.45;
+
+/// Where along a blade its colour is read for a strand, as shares of its
+/// length.
+pub(crate) const STRAND_ALONG: [f32; 5] = [0.0, 0.25, 0.5, 0.75, 1.0];
+
+/// The least-squares fit of a strand's root and tip colours to a blade's
+/// colours at `STRAND_ALONG`: the line is `(1 - a) root + a tip`, darkened
+/// by `mix(STRAND_FOOT, 1, a)`, and the points are weighed as a trapezoid.
+/// Row 0 gives the root and row 1 the tip. `STRAND_FIT` in `generate.wesl`
+/// is these numbers to six places.
+pub(crate) fn strand_fit() -> [[f32; 5]; 2] {
+    let weight = [1.0, 2.0, 2.0, 2.0, 1.0].map(|w: f64| w / 8.0);
+    let basis = STRAND_ALONG.map(|a| {
+        let a = f64::from(a);
+        let lit = f64::from(STRAND_FOOT) + (1.0 - f64::from(STRAND_FOOT)) * a;
+        [(1.0 - a) * lit, a * lit]
+    });
+    // The normal equations, a 2 by 2 matrix, inverted by hand.
+    let mut m = [[0.0; 2]; 2];
+    for (f, w) in basis.iter().zip(weight) {
+        for i in 0..2 {
+            for j in 0..2 {
+                m[i][j] += w * f[i] * f[j];
+            }
+        }
+    }
+    let det = m[0][0] * m[1][1] - m[0][1] * m[1][0];
+    let inverse = [
+        [m[1][1] / det, -m[0][1] / det],
+        [-m[1][0] / det, m[0][0] / det],
+    ];
+    let mut fit = [[0.0; 5]; 2];
+    for (row, inv) in fit.iter_mut().zip(inverse) {
+        for (k, (f, w)) in basis.iter().zip(weight).enumerate() {
+            row[k] = ((inv[0] * f[0] + inv[1] * f[1]) * w) as f32;
+        }
+    }
+    fit
+}
+
+/// A strand's root and tip colours, in light, for a blade whose colours
+/// times its root shade are `wanted` at `STRAND_ALONG`. The WESL twin is in
+/// `strand_of`.
+pub(crate) fn strand_colours(wanted: [Vec3; 5]) -> (Vec3, Vec3) {
+    let fit = strand_fit();
+    let line = |row: [f32; 5]| {
+        row.iter()
+            .zip(wanted)
+            .fold(Vec3::ZERO, |sum, (k, c)| sum + c * *k)
+    };
+    (line(fit[0]).max(Vec3::ZERO), line(fit[1]).max(Vec3::ZERO))
+}
+
 /// A linear colour as sRGB in 8 bits a channel, red lowest, the top 8 bits
 /// 0, as a strand carries its colours. The WESL twin is `srgb_word`.
 pub(crate) fn srgb_word(linear: Vec3) -> u32 {

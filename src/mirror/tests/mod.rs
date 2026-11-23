@@ -481,3 +481,47 @@ fn srgb_words_are_pinned() {
     // Out of range is clamped, not wrapped.
     assert_eq!(srgb_word(Vec3::new(-1.0, 2.0, 0.0)), 255 << 8);
 }
+
+#[test]
+fn the_shader_fits_a_strand_s_colours_with_the_mirror_s_numbers() {
+    let shader = include_str!("../../shaders/generate.wesl");
+    let from = shader.find("const STRAND_FIT").expect("STRAND_FIT");
+    let text = &shader[from..from + shader[from..].find(");").expect("its end")];
+    let numbers: Vec<f32> = text
+        .split(|c: char| !(c.is_ascii_digit() || c == '.' || c == '-'))
+        .filter(|word| word.contains('.'))
+        .map(|word| word.parse().expect("a number"))
+        .collect();
+    let fit = strand_fit();
+    assert_eq!(numbers.len(), 10, "{numbers:?}");
+    for (got, wanted) in numbers.iter().zip(fit.iter().flatten()) {
+        assert!((got - wanted).abs() < 2e-6, "{got} against {wanted}");
+    }
+    assert!(shader.contains(&format!("const STRAND_FOOT: f32 = {STRAND_FOOT};")));
+}
+
+#[test]
+fn a_strand_drawn_from_its_fitted_colours_is_the_blade_where_a_line_can_be() {
+    // A blade whose colour, darkened at its foot, is a line in light: the
+    // fit finds it exactly.
+    let (root, tip) = (Vec3::new(0.1, 0.2, 0.05), Vec3::new(0.3, 0.5, 0.1));
+    let wanted = STRAND_ALONG.map(|a| root.lerp(tip, a) * (STRAND_FOOT + (1.0 - STRAND_FOOT) * a));
+    let (r, t) = strand_colours(wanted);
+    assert!(
+        (r - root).length() < 1e-5 && (t - tip).length() < 1e-5,
+        "{r} {t}"
+    );
+    // An even colour: the root is made lighter to make up for the dark foot,
+    // and the mean of the line is the colour.
+    let even = Vec3::splat(0.2);
+    let (r, t) = strand_colours([even; 5]);
+    assert!(r.x > t.x && t.x > 0.15, "{r} {t}");
+    let mean: f32 = (0..=100)
+        .map(|i| {
+            let a = i as f32 / 100.0;
+            (r.x + (t.x - r.x) * a) * (STRAND_FOOT + (1.0 - STRAND_FOOT) * a)
+        })
+        .sum::<f32>()
+        / 101.0;
+    assert!((mean - 0.2).abs() < 0.01, "{mean}");
+}

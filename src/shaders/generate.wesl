@@ -102,6 +102,18 @@ const SLICE: u32 = 512u;
 const FIXED_LOD_NONE: u32 = 3u;
 /// The bucket a strand is counted in, beside the three of instances.
 const STRAND: u32 = 3u;
+/// How much darker a line that draws a strand is at its foot than at its
+/// tip: it is lit `mix(STRAND_FOOT, 1, along)` of its colour, as the plant
+/// library draws a loose strand. Twin of `mirror::STRAND_FOOT`.
+const STRAND_FOOT: f32 = 0.45;
+/// The least-squares fit of a line's root and tip colours, `(1 - a)` and `a`
+/// times `mix(STRAND_FOOT, 1, a)`, to a blade's colours at `a` = 0, 1/4,
+/// 1/2, 3/4 and 1 of its length, weighed as a trapezoid. Twin of
+/// `mirror::STRAND_FIT`, which works it out.
+const STRAND_FIT = array<array<f32, 5>, 2>(
+    array<f32, 5>(0.611117, 1.071815, 0.676176, 0.035316, -0.425382),
+    array<f32, 5>(-0.191422, -0.198644, 0.126534, 0.592689, 0.599911),
+);
 
 fn is_orthographic() -> bool {
     return view.camera_position.w > 0.5;
@@ -360,12 +372,29 @@ fn strand_of(words: vec4<u32>) -> LooseStrand {
     let head = field.form.w;
     let top = select(1.0, 1.0 - 0.5 * head - 1e-3, head > 0.0);
     let noise = textureSampleLevel(gust_texture, gust_sampler, patch_uv(instance, field), 0.0).r;
+    // A line drawn from these two colours is the straight mix of them,
+    // darkened toward its foot as `mix(STRAND_FOOT, 1, along)`. The blade is
+    // its colour along `pow(t, 0.7)` and darkened at its roots by its own
+    // occlusion. The two are fitted to the blade by least squares over five
+    // points of its length, `STRAND_FIT`, so that the line has the blade's
+    // colour where it can.
+    var fit = STRAND_FIT;
+    var root = vec3<f32>(0.0);
+    var tip_colour = vec3<f32>(0.0);
+    for (var k = 0; k < 5; k++) {
+        let along = f32(k) * 0.25;
+        let t = along * top;
+        let wanted = blade_color_with(instance, field, t, noise).rgb
+            * mix(1.0 - field.motion.w, 1.0, smoothstep(0.0, 0.6, t));
+        root += fit[0][k] * wanted;
+        tip_colour += fit[1][k] * wanted;
+    }
     var out: LooseStrand;
     out.foot = instance.root;
     out.tall = length(tip);
     out.beside = tip.xz;
-    out.root = srgb_word(blade_color_with(instance, field, 0.0, noise).rgb);
-    out.tip = srgb_word(blade_color_with(instance, field, top, noise).rgb);
+    out.root = srgb_word(max(root, vec3<f32>(0.0)));
+    out.tip = srgb_word(max(tip_colour, vec3<f32>(0.0)));
     return out;
 }
 

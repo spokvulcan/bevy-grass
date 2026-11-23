@@ -43,7 +43,9 @@ use them.
   its root, where its tip lies as it is bent now, and its root's and tip's
   colours before light, for a pass of the game's own to draw as a line one
   pixel wide. It comes as 0, which draws exactly as before and hands out
-  nothing.
+  nothing. The two colours are fitted so that a line drawn from them, darkened
+  to 0.45 at its root, is the blade with its own shade at the roots, as
+  `docs/rendering.md` says.
 
 **Changed**
 

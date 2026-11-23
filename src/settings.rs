@@ -166,6 +166,17 @@ pub struct GrassSettings {
     /// blades only, whose sway a temporal filter would otherwise smear the
     /// most.
     pub motion_lods: u32,
+    /// How many levels of detail, from the farthest, are strands and not
+    /// triangles, 0 to 2. A blade of such a level is drawn in no pass of the
+    /// grass, not in the prepass, the picture or the shadow maps: the
+    /// compute pass writes it as a [`GrassStrands`](crate::GrassStrands)
+    /// record instead, a line from its root to its tip with its colours, for
+    /// a pass of the game's own to draw. 0, the default, draws every blade as
+    /// triangles and hands nothing out; 1 makes the coarse level strands, 2
+    /// the middle level and the coarse. Perspective cameras only. Changing
+    /// it makes the camera's buffers anew, which starts its trample trails
+    /// again.
+    pub strand_lods: u32,
 
     // Limits of the view.
     /// Half the side of the square around an orthographic camera in which
@@ -268,6 +279,7 @@ impl GrassSettings {
         max_widening: 2.5,
         turn_to_camera: 0.4,
         motion_lods: 3,
+        strand_lods: 0,
         orthographic_extent: 256.0,
         max_chunk_slices: 8192,
         readback_interval: 120,
@@ -334,6 +346,7 @@ impl GrassSettings {
                 .clamp(1.0, Self::MAX_WIDENING),
             turn_to_camera: finite(self.turn_to_camera, high.turn_to_camera).clamp(0.0, 1.0),
             motion_lods: self.motion_lods.min(3),
+            strand_lods: self.strand_lods.min(2),
             orthographic_extent: finite(self.orthographic_extent, high.orthographic_extent)
                 .clamp(8.0, Self::MAX_ORTHOGRAPHIC_EXTENT),
             max_chunk_slices: self.max_chunk_slices.clamp(1, Self::MAX_CHUNK_SLICES),
@@ -400,6 +413,7 @@ impl GrassSettings {
             max_widening,
             turn_to_camera,
             motion_lods,
+            strand_lods,
             orthographic_extent,
             max_chunk_slices,
             trample_recovery,

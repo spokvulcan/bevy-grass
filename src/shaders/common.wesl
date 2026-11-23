@@ -96,6 +96,31 @@ struct View {
     /// for exact motion vectors; the others move with the camera only
     /// (`GrassSettings::motion_lods`).
     motion_lods: u32,
+    /// How many levels of detail, from the farthest, are strands and not
+    /// triangles (`GrassSettings::strand_lods`): 0 none, 1 the coarse level,
+    /// 2 the middle level and the coarse. Perspective views only.
+    strand_lods: u32,
+    /// Records the view's strand buffer has room for.
+    strand_capacity: u32,
+    /// Where the visible chunk slices begin in the instance buffer, in
+    /// instances: after the three buckets.
+    visible_base: u32,
+}
+
+/// A blade drawn as a line one pixel wide, which belongs to no plant. 32
+/// bytes, as `GrassStrands` hands them out.
+struct LooseStrand {
+    /// Where its foot is, in world space, in metres.
+    foot: vec3<f32>,
+    /// How far its tip lies from its foot, in metres.
+    tall: f32,
+    /// How far its tip lies beside its foot in world X and Z, in metres, as
+    /// it is bent now, wind and all.
+    beside: vec2<f32>,
+    /// The colour of its root and of its tip before any light, as sRGB in 8
+    /// bits a channel, red lowest. The top 8 bits are 0.
+    root: u32,
+    tip: u32,
 }
 
 /// One field. Mirrors `FieldGpu` in `gpu_layout.rs`.
@@ -359,6 +384,71 @@ fn instance_random(instance: Instance, salt: u32) -> f32 {
 /// The colour of dried grass of `color`'s brightness.
 fn straw_of(color: vec3<f32>) -> vec3<f32> {
     return vec3<f32>(dot(color, vec3<f32>(0.3, 0.59, 0.11))) * vec3<f32>(1.25, 1.1, 0.6);
+}
+
+/// Where a blade reads its colour patches from the patch noise: the place
+/// it stands in the space of the field's patterns, world XZ or the place the
+/// game named (`GrassAnchor`), turned so its repeat is not along the world's
+/// axes.
+fn patch_uv(instance: Instance, field: Field) -> vec2<f32> {
+    var steady = instance.root.xz;
+    if field.anchor.w > 0.5 {
+        let from_corner = instance.root.xz - field.min_corner.xz
+            - field.lean.xy * (instance.root.y - field.min_corner.y - field.lean.z);
+        let own = vec2<f32>(dot(from_corner, field.axis.xy), dot(from_corner, vec2<f32>(-field.axis.y, field.axis.x)));
+        steady = field.anchor.xy + field.axis.zw * own.x + vec2<f32>(-field.axis.w, field.axis.z) * own.y;
+    }
+    let at = steady / (field.variation.x * 8.0);
+    return vec2<f32>(at.x * 0.83 - at.y * 0.56, at.x * 0.56 + at.y * 0.83);
+}
+
+/// Base colour and translucency of a blade at height `t` (0 root, 1 tip),
+/// with `noise` the patch noise read at `patch_uv`. The draws call it
+/// through `look::blade_color`, and the strands of `generate` call it with
+/// every term compiled in. A term a field does not use adds exactly nothing.
+fn blade_color_with(instance: Instance, field: Field, t: f32, noise: f32) -> vec4<f32> {
+    // Dark roots to bright tips. Brightness varies mostly per clump and a
+    // little per blade, and one clump in five is drier, toward straw: patches
+    // read as natural where per-blade noise reads as static.
+    let clump = instance.clump;
+    let shade = mix(0.82, 1.12, clump) * (0.94 + 0.12 * instance.seed);
+    let green = mix(field.root_color.rgb, field.tip_color.rgb, pow(t, 0.7)) * shade;
+    let straw = vec3<f32>(dot(green, vec3<f32>(0.3, 0.59, 0.11))) * vec3<f32>(1.25, 1.1, 0.6);
+    var color = mix(green, straw, 0.4 * step(0.8, fract(clump * 5.3)));
+@if(GRASS_VARIATION) {
+    // Patches several metres across, where the blades' colour drifts toward
+    // the patch colour.
+    let in_patch = field.patches.w * smoothstep(0.3, 0.7, noise);
+    color *= mix(vec3<f32>(1.0), field.patches.rgb, in_patch);
+    // Dry tips: the upper part of the blade, some blades more than others.
+    let dry = field.variation.y * smoothstep(0.45, 1.0, t) * (0.4 + 1.2 * instance_random(instance, 0x7d1u));
+    color = mix(color, straw_of(color), min(dry, 1.0));
+}
+@if(GRASS_SHAPE) {
+    let head = field.form.w;
+    color = select(color, field.head.rgb, head > 0.0 && t >= 1.0 - 0.5 * head - 1e-4);
+}
+@if(GRASS_VARIATION) {
+    // Dead blades, head and all.
+    let dead = instance_random(instance, 0x7d2u) < field.variation.z;
+    color = select(color, straw_of(color) * 0.85, dead);
+}
+@if(GRASS_GROUND_TINT)
+    // The lowest third of the blade blends toward the ground's colour, so the
+    // field sits in the terrain instead of on it.
+    color = mix(color, field.ground.rgb, field.ground.w * (1.0 - smoothstep(0.0, 0.35, t)));
+    return vec4<f32>(color, field.tip_color.w);
+}
+
+/// A linear colour as sRGB in 8 bits a channel, red lowest, top 8 bits 0.
+/// Twin of `mirror::srgb_word`.
+fn srgb_word(linear: vec3<f32>) -> u32 {
+    let c = clamp(linear, vec3<f32>(0.0), vec3<f32>(1.0));
+    let low = c * 12.92;
+    let high = 1.055 * pow(c, vec3<f32>(1.0 / 2.4)) - 0.055;
+    let s = select(high, low, c <= vec3<f32>(0.0031308));
+    let q = vec3<u32>(round(s * 255.0));
+    return q.x | (q.y << 8u) | (q.z << 16u);
 }
 
 /// Rows in a blade of level of detail `lod`.

@@ -450,3 +450,34 @@ fn a_raised_view_keeps_the_same_number_of_blades_at_any_height() {
         assert!((height_thinning(100.0, offset) * ground - 100.0 * 100.0).abs() < 1e-2);
     }
 }
+
+#[test]
+fn a_strand_tip_ends_the_blade_where_its_curve_ends() {
+    // Upright: straight up, as tall as the blade.
+    let up = strand_tip(0.5, Vec2::Y, 0.0, Vec2::ZERO, 0.0);
+    assert!((up - Vec3::new(0.0, 0.5, 0.0)).length() < 1e-5, "{up}");
+    // Bent: beside the foot the way of the bend, lower and nearer than the
+    // blade is long, for the blade arches and keeps its length.
+    let bent = strand_tip(0.5, Vec2::Y, 0.0, Vec2::new(0.4, 0.0), 0.0);
+    assert!(bent.x > 0.1 && bent.z.abs() < 1e-6, "{bent}");
+    assert!(
+        bent.length() < 0.5 && bent.length() > 0.4,
+        "{}",
+        bent.length()
+    );
+    // The lean goes along the face, and is the same as a bend that way.
+    let leaning = strand_tip(0.5, Vec2::new(0.6, 0.8), 0.3, Vec2::ZERO, 0.0);
+    let bent_so = strand_tip(0.5, Vec2::ZERO, 0.0, Vec2::new(0.18, 0.24), 0.0);
+    assert!((leaning - bent_so).length() < 1e-6);
+}
+
+#[test]
+fn srgb_words_are_pinned() {
+    assert_eq!(srgb_word(Vec3::ZERO), 0);
+    assert_eq!(srgb_word(Vec3::ONE), 0x00ff_ffff, "the top byte stays 0");
+    // Mid grey in light is 188 of 255 in sRGB; red is the lowest byte.
+    assert_eq!(srgb_word(Vec3::new(0.5, 0.0, 0.0)), 188);
+    assert_eq!(srgb_word(Vec3::new(0.0, 0.0, 0.5)), 188 << 16);
+    // Out of range is clamped, not wrapped.
+    assert_eq!(srgb_word(Vec3::new(-1.0, 2.0, 0.0)), 255 << 8);
+}

@@ -65,6 +65,9 @@ impl ComputePass {
     }
 }
 
+/// The look terms a strand's colours take in: those of `blade_color`.
+const STRAND_LOOK: [&str; 3] = ["GRASS_GROUND_TINT", "GRASS_SHAPE", "GRASS_VARIATION"];
+
 /// Cells in a trample window.
 const TRAMPLE_CELLS: u32 = (trample::TEXELS * trample::TEXELS) as u32;
 
@@ -89,6 +92,14 @@ pub(crate) fn init_generate_pipelines(
                 shaders.generate.clone()
             },
             entry_point: Some(entry.into()),
+            // A strand's colours are those of the draw with every look term
+            // compiled in. A term a field does not use adds exactly nothing,
+            // and only the strands of `generate` read them.
+            shader_defs: if pass.is_trample() {
+                Vec::new()
+            } else {
+                STRAND_LOOK.iter().map(|&def| def.into()).collect()
+            },
             ..Default::default()
         })
     };

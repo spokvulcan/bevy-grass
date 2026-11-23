@@ -146,8 +146,9 @@ impl GrassLayouts {
         // storage buffer in a pipeline's layout counts against the device's
         // limit per shader stage, used by the entry point or not. The binding
         // numbers stay those of `generate.wesl` and `trample.wesl`: 0 the
-        // view, 1 visible slices, 2 counters, 3 instances, 4 draw arguments,
-        // 5 trample cells, 6 interactors.
+        // view, 1 strand records, 2 counters, 3 instances (and the visible
+        // slices after them), 4 draw arguments, 5 trample cells, 6
+        // interactors, 7 the strand count.
         let view = || (0, uniform_buffer::<ViewUniformData>(false));
         let generate_view = BindGroupLayoutDescriptor::new(
             "grass_generate_view",
@@ -166,7 +167,12 @@ impl GrassLayouts {
             "grass_args_view",
             &BindGroupLayoutEntries::with_indices(
                 ShaderStages::COMPUTE,
-                (view(), (2, read_write()), (4, read_write())),
+                (
+                    view(),
+                    (2, read_write()),
+                    (4, read_write()),
+                    (7, read_write()),
+                ),
             ),
         );
         let trample_view = BindGroupLayoutDescriptor::new(

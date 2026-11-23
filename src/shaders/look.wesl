@@ -20,55 +20,17 @@
 //! `bevy_bridge`.
 
 import package::shaders::bevy_bridge::GrassSurface;
-import package::shaders::common::{Field, Instance, instance_random, straw_of};
+import package::shaders::common::{Field, Instance, patch_uv, blade_color_with};
 import package::shaders::blade::{noise_texture, noise_sampler};
 
-/// Base colour and translucency of a blade at height `t` (0 root, 1 tip).
+/// Base colour and translucency of a blade at height `t` (0 root, 1 tip):
+/// `common::blade_color_with`, with the patch noise read only when some
+/// field has patches.
 fn blade_color(instance: Instance, field: Field, t: f32) -> vec4<f32> {
-    // Dark roots to bright tips. Brightness varies mostly per clump and a
-    // little per blade, and one clump in five is drier, toward straw: patches
-    // read as natural where per-blade noise reads as static.
-    let clump = instance.clump;
-    let shade = mix(0.82, 1.12, clump) * (0.94 + 0.12 * instance.seed);
-    let green = mix(field.root_color.rgb, field.tip_color.rgb, pow(t, 0.7)) * shade;
-    let straw = vec3<f32>(dot(green, vec3<f32>(0.3, 0.59, 0.11))) * vec3<f32>(1.25, 1.1, 0.6);
-    var color = mix(green, straw, 0.4 * step(0.8, fract(clump * 5.3)));
-@if(GRASS_VARIATION) {
-    // Patches several metres across, where the blades' colour drifts toward
-    // the patch colour: the noise, turned so its repeat is not along the
-    // world's axes.
-    // Read where the blade stands in the space of the field's patterns:
-    // world XZ, or the place the game named (`GrassAnchor`).
-    var steady = instance.root.xz;
-    if field.anchor.w > 0.5 {
-        let from_corner = instance.root.xz - field.min_corner.xz
-            - field.lean.xy * (instance.root.y - field.min_corner.y - field.lean.z);
-        let own = vec2<f32>(dot(from_corner, field.axis.xy), dot(from_corner, vec2<f32>(-field.axis.y, field.axis.x)));
-        steady = field.anchor.xy + field.axis.zw * own.x + vec2<f32>(-field.axis.w, field.axis.z) * own.y;
-    }
-    let at = steady / (field.variation.x * 8.0);
-    let uv = vec2<f32>(at.x * 0.83 - at.y * 0.56, at.x * 0.56 + at.y * 0.83);
-    let noise = textureSampleLevel(noise_texture, noise_sampler, uv, 0.0).r;
-    let in_patch = field.patches.w * smoothstep(0.3, 0.7, noise);
-    color *= mix(vec3<f32>(1.0), field.patches.rgb, in_patch);
-    // Dry tips: the upper part of the blade, some blades more than others.
-    let dry = field.variation.y * smoothstep(0.45, 1.0, t) * (0.4 + 1.2 * instance_random(instance, 0x7d1u));
-    color = mix(color, straw_of(color), min(dry, 1.0));
-}
-@if(GRASS_SHAPE) {
-    let head = field.form.w;
-    color = select(color, field.head.rgb, head > 0.0 && t >= 1.0 - 0.5 * head - 1e-4);
-}
-@if(GRASS_VARIATION) {
-    // Dead blades, head and all.
-    let dead = instance_random(instance, 0x7d2u) < field.variation.z;
-    color = select(color, straw_of(color) * 0.85, dead);
-}
-@if(GRASS_GROUND_TINT)
-    // The lowest third of the blade blends toward the ground's colour, so the
-    // field sits in the terrain instead of on it.
-    color = mix(color, field.ground.rgb, field.ground.w * (1.0 - smoothstep(0.0, 0.35, t)));
-    return vec4<f32>(color, field.tip_color.w);
+    var noise = 0.0;
+@if(GRASS_VARIATION)
+    noise = textureSampleLevel(noise_texture, noise_sampler, patch_uv(instance, field), 0.0).r;
+    return blade_color_with(instance, field, t, noise);
 }
 
 /// Fake ambient occlusion at height `t`: the surrounding blades shade the

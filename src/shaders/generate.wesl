@@ -9,15 +9,20 @@
 //!    thins, culls, picks a LOD, computes the wind, and appends survivors to
 //!    their bucket.
 //! 4. `write_draw_args`: one thread. Turns bucket counts into indirect draw
-//!    arguments, clamped to capacity.
+//!    arguments, clamped to capacity, and says how many strands were written.
+//!
+//! A blade of a level that is a strand (`View::strand_lods`) gets no instance
+//! and so no triangle in any pass: `generate` writes a `LooseStrand` for it
+//! instead, the same blade as a line, for another pass to draw.
 //!
 //! Before them, the passes in `trample.wesl` update the view's trample cells,
 //! and `generate` samples them at every blade's root.
 
 import package::shaders::common::{
-    Frame, View, Field, Chunk, LodTable, BladeData, TILE_POINTS, NO_MAP, WIDTH_RANGE, TAU,
+    Frame, View, Field, Chunk, LodTable, BladeData, LooseStrand, TILE_POINTS, NO_MAP, WIDTH_RANGE, TAU,
     LOD_VERTEX_STRIDE, hash, hash2, unit, density_falloff, height_thinning, select_lod, coverage_width, pack,
-    trample_unpack, trample_slot, in_trample_window,
+    unpack, blade_curve, instance_random, patch_uv, blade_color_with, srgb_word, trample_unpack, trample_slot,
+    in_trample_window,
 };
 import package::shaders::wind::{Wind, wind_bend};
 
@@ -46,7 +51,10 @@ const HOLE: f32 = -1e30;
 
 /// One slice of a visible chunk's candidates: the chunk, the slice's first
 /// candidate and how many it holds. A dense chunk is several slices, so
-/// several workgroups generate it at once.
+/// several workgroups generate it at once. Kept in the instance buffer from
+/// `View::visible_base` on, one instance each, x the chunk, y the first and
+/// z the count, so that the strands can have a binding of their own within
+/// the storage buffers a stage may bind.
 struct VisibleChunk {
     chunk: u32,
     first: u32,
@@ -70,14 +78,19 @@ struct DrawArgs {
 
 // This view.
 @group(1) @binding(0) var<uniform> view: View;
-@group(1) @binding(1) var<storage, read_write> visible: array<VisibleChunk>;
-/// 0–2: blades per bucket (unclamped); 3: visible chunk slices (unclamped).
-@group(1) @binding(2) var<storage, read_write> counters: array<atomic<u32>, 4>;
+/// The strands of this frame, packed from the first: `GrassStrands::records`.
+@group(1) @binding(1) var<storage, read_write> strands: array<LooseStrand>;
+/// 0–2: blades per bucket (unclamped); 3: visible chunk slices (unclamped);
+/// 4: strands (unclamped).
+@group(1) @binding(2) var<storage, read_write> counters: array<atomic<u32>, 5>;
 @group(1) @binding(3) var<storage, read_write> instances: array<vec4<u32>>;
 @group(1) @binding(4) var<storage, read_write> draw_args: array<DrawArgs, 3>;
 /// One packed push per trample cell, addressed by `trample_slot`. Read with
 /// plain loads: `trample.wesl` writes it in earlier dispatches.
 @group(1) @binding(5) var<storage, read_write> trample: array<u32>;
+/// How many strands `strands` holds this frame, at its first word:
+/// `GrassStrands::count`. Only `write_draw_args` writes it.
+@group(1) @binding(7) var<storage, read_write> strand_count: array<u32>;
 // Only `size_dispatch` writes the dispatch arguments, in a group of their own:
 // `generate` reads them as its indirect arguments, and one dispatch may not
 // use a buffer both ways.
@@ -87,6 +100,8 @@ const WORKGROUP: u32 = 64u;
 /// Candidates per slice: one workgroup's share of a chunk.
 const SLICE: u32 = 512u;
 const FIXED_LOD_NONE: u32 = 3u;
+/// The bucket a strand is counted in, beside the three of instances.
+const STRAND: u32 = 3u;
 
 fn is_orthographic() -> bool {
     return view.camera_position.w > 0.5;
@@ -197,7 +212,7 @@ fn cull(@builtin(global_invocation_id) id: vec3<u32>) {
     let slot = atomicAdd(&counters[3], slices);
     for (var s = 0u; s < slices; s++) {
         if slot + s < view.max_visible_chunks {
-            visible[slot + s] = VisibleChunk(index, s * SLICE, min(SLICE, needed - s * SLICE), 0u);
+            instances[view.visible_base + slot + s] = vec4<u32>(index, s * SLICE, min(SLICE, needed - s * SLICE), 0u);
         }
     }
 }
@@ -311,8 +326,47 @@ fn ground_height(field: Field, local: vec2<f32>) -> f32 {
 
 struct Generated {
     keep: bool,
+    /// One of the three buckets of instances, or `STRAND`.
     bucket: u32,
     words: vec4<u32>,
+    strand: LooseStrand,
+}
+
+/// The blade of `words` as a strand: where its root is, where its tip is
+/// as the draw would bend it now for this view's eye, and its colours at
+/// root and tip as the draw gives them before light. Read back from the
+/// packed words, so that it is the blade a draw would have unpacked, to the
+/// bit. Its tip is `mirror::strand_tip`.
+fn strand_of(words: vec4<u32>) -> LooseStrand {
+    let instance = unpack(words, view.instance_origin, view.limits.w);
+    let field = fields[instance.field];
+    let height = instance.height * field.shape.y;
+    // The facing and its turn toward the eye, as `blade::blade_vertex`
+    // works them out for a perspective eye.
+    var to_eye = view.camera_position.xz - instance.root.xz;
+    to_eye = select(vec2<f32>(0.0, 1.0), normalize(to_eye), dot(to_eye, to_eye) > 1e-8);
+    let yaw = (instance.facing + field.anchor.z) * TAU;
+    var face = vec2<f32>(sin(yaw), cos(yaw));
+    let facing_eye = dot(face, to_eye);
+    let edge_on = 1.0 - abs(facing_eye);
+    face = normalize(mix(face, to_eye * select(-1.0, 1.0, facing_eye >= 0.0), edge_on * view.limits.z));
+    // Droop, as `blade_vertex` gives it with the shape compiled in; 0 for a
+    // field that does not droop.
+    let droop = field.form.y * instance_random(instance, 0x7c2u) * (0.5 + 0.5 * instance.height);
+    let curve = blade_curve(height, face * field.motion.x + instance.bend, droop);
+    let tip = curve[2];
+    // A head is left out: the tip takes the colour of the stem just below
+    // it, where the head begins.
+    let head = field.form.w;
+    let top = select(1.0, 1.0 - 0.5 * head - 1e-3, head > 0.0);
+    let noise = textureSampleLevel(gust_texture, gust_sampler, patch_uv(instance, field), 0.0).r;
+    var out: LooseStrand;
+    out.foot = instance.root;
+    out.tall = length(tip);
+    out.beside = tip.xz;
+    out.root = srgb_word(blade_color_with(instance, field, 0.0, noise).rgb);
+    out.tip = srgb_word(blade_color_with(instance, field, top, noise).rgb);
+    return out;
 }
 
 /// Candidate `index` of a visible chunk: twin of `mirror::candidate` followed
@@ -438,19 +492,29 @@ fn evaluate(chunk: Chunk, field: Field, index: u32) -> Generated {
     out.keep = true;
     out.bucket = select(lod, 0u, view.fixed_lod != 3u);
     out.words = pack(blade, view.instance_origin, view.limits.w);
+    // A level that is a strand: a line in the picture only, so a blade seen
+    // only for its shadow is not kept.
+    if view.fixed_lod == 3u && lod + view.strand_lods >= 3u {
+        out.keep = visible_blade;
+        out.bucket = STRAND;
+        if visible_blade && view.strand_capacity > 0u {
+            out.strand = strand_of(out.words);
+        }
+    }
     return out;
 }
 
 var<workgroup> group_total: u32;
-var<workgroup> group_counts: array<atomic<u32>, 3>;
-var<workgroup> group_base: array<u32, 3>;
+var<workgroup> group_counts: array<atomic<u32>, 4>;
+var<workgroup> group_base: array<u32, 4>;
 
 /// One workgroup per slice of a visible chunk. Survivors are counted per bucket inside
 /// the workgroup first, so the global counters see one atomic per bucket per
 /// 64 candidates instead of one per blade.
 @compute @workgroup_size(64)
 fn generate(@builtin(workgroup_id) group: vec3<u32>, @builtin(local_invocation_index) lane: u32) {
-    let entry = visible[group.x];
+    let slice = instances[view.visible_base + group.x];
+    let entry = VisibleChunk(slice.x, slice.y, slice.z, 0u);
     if lane == 0u {
         group_total = entry.count;
     }
@@ -460,7 +524,7 @@ fn generate(@builtin(workgroup_id) group: vec3<u32>, @builtin(local_invocation_i
 
     let rounds = (total + WORKGROUP - 1u) / WORKGROUP;
     for (var round = 0u; round < rounds; round++) {
-        if lane < 3u {
+        if lane < 4u {
             atomicStore(&group_counts[lane], 0u);
         }
         workgroupBarrier();
@@ -480,11 +544,20 @@ fn generate(@builtin(workgroup_id) group: vec3<u32>, @builtin(local_invocation_i
         if lane < 3u {
             group_base[lane] = atomicAdd(&counters[lane], atomicLoad(&group_counts[lane]));
         }
+        // No strand counted, no atomic: a frame without strands does the
+        // three above only, as it did before strands.
+        if lane == STRAND && view.strand_lods > 0u {
+            group_base[STRAND] = atomicAdd(&counters[4], atomicLoad(&group_counts[STRAND]));
+        }
         workgroupBarrier();
 
         if result.keep {
             let at = group_base[result.bucket] + slot;
-            if at < view.bucket_capacity[result.bucket] {
+            if result.bucket == STRAND {
+                if at < view.strand_capacity {
+                    strands[at] = result.strand;
+                }
+            } else if at < view.bucket_capacity[result.bucket] {
                 instances[view.bucket_base[result.bucket] + at] = result.words;
             }
         }
@@ -505,4 +578,5 @@ fn write_draw_args() {
             0u,
         );
     }
+    strand_count[0] = min(atomicLoad(&counters[4]), view.strand_capacity);
 }

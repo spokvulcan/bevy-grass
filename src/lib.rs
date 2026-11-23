@@ -83,6 +83,7 @@ pub use edit::{
 pub use far::{FarGrass, FarGrassMaterial, FarGrassPlugin, FarGrassUniform};
 pub use physics::{GrassColliderBounds, GrassColliderSystems, GrassInteractorFromCollider};
 pub use render::platform::GrassSupport;
+pub use render::view::{GrassStrands, STRAND_SIZE};
 pub use settings::{GrassQuality, GrassSettings, GrassShadows};
 pub use stats::{GpuStats, GrassDiagnostics, GrassStats, TableStats};
 pub use style_file::{GrassStyleFileError, GrassStyleFilePlugin, GrassStyleLoader};

@@ -78,6 +78,33 @@ as it stood last frame. `GrassSettings::motion_lods` builds only the nearest
 levels of detail twice: the others are built once and given the camera's
 motion alone, as if they stood still. The [`passes`](../examples/passes.rs) example shows each path.
 
+## Far blades as strands
+
+From far a blade is a pixel wide or less, and a triangle that small costs the
+GPU as much to lay out as a large one. `GrassSettings::strand_lods` makes the
+farthest levels of detail strands: the compute pass gives such a blade no
+instance, so no grass pass draws it, not the prepass, the picture or a shadow
+map, and writes it into the camera's `GrassStrands` instead. That is a
+component on the camera's render-world entity with two buffers. `records`
+holds one 32-byte `LooseStrand` per blade, packed from byte 0, and the first
+`u32` of `count` says how many there are this frame, at most `capacity`.
+
+A record is the blade as the draw would build it this frame for this camera:
+its root, the end of its curve, bent by its lean, the wind and trampling and
+turned toward the eye as an edge-on blade is, and its colours at root and tip
+as `blade_color` gives them before light, with clump shade, colour patches,
+dry tips, dead blades, the ground tint and the field's tint. `tall` is how
+far the tip lies from the root, a little less than the blade is long when it
+bends. A head, of a flower or seed, is left out: the tip takes the colour of
+the stem just below it. Nothing about how wide the blade is, or how see-through,
+is carried, as a line is one pixel wide. A blade that would be kept only for
+the shadow it casts into the view is not written.
+
+The grass draws no strand itself. A game hands the buffers to a pass that
+draws lines, and without one the far blades are simply not in the picture.
+The records are written by the grass's compute passes, which run before any
+camera renders.
+
 ## Bind groups and the storage-buffer budget
 
 Every grass pipeline binds at most 10 storage buffers in a shader stage: what
@@ -88,8 +115,8 @@ every pipeline within 10, and the GPU tests run on a device lowered to 10.
 
 | Pipeline | Group 0 | Group 1 | Group 2 | Storage buffers |
 | --- | --- | --- | --- | --- |
-| `cull`, `generate` | fields, chunks, scene, tile, clumps, tufts | view, visible slices, counters, instances, trample cells | none | 10 |
-| `size_dispatch`, `write_draw_args` | the same 6 | view, counters, draw arguments | dispatch arguments (`size_dispatch`) | 9 |
+| `cull`, `generate` | fields, chunks, scene, tile, clumps, tufts | view, strand records, counters, instances (and after them the visible slices), trample cells | none | 10 |
+| `size_dispatch`, `write_draw_args` | the same 6 | view, counters, draw arguments, strand count | dispatch arguments (`size_dispatch`) | 9, and 10 for `size_dispatch` |
 | `trample_decay`, `trample_stamp` | the same 6 | view, trample cells, interactors | none | 8 |
 | Grass draws | Bevy's view groups | Bevy's | frame, view, instances, fields, noise, wind | 2, in the vertex stage only |
 

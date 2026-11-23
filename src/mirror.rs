@@ -361,6 +361,30 @@ pub(crate) fn blade_curve(height: f32, lean: f32, bend: Vec2, droop: f32) -> [Ve
     [p0, p1, p2]
 }
 
+/// Where a blade's tip lies from its root when it is a strand, the end of
+/// its curve: `face` is the way it faces, turned toward the eye, `lean` the
+/// style's lean along it, `bend` its wind and trample. A strand's `tall` is
+/// this tip's distance and its `beside` the tip's X and Z. The WESL twin is
+/// in `strand_of` of `generate.wesl`.
+pub(crate) fn strand_tip(height: f32, face: Vec2, lean: f32, bend: Vec2, droop: f32) -> Vec3 {
+    blade_curve(height, 0.0, face * lean + bend, droop)[2]
+}
+
+/// A linear colour as sRGB in 8 bits a channel, red lowest, the top 8 bits
+/// 0, as a strand carries its colours. The WESL twin is `srgb_word`.
+pub(crate) fn srgb_word(linear: Vec3) -> u32 {
+    let channel = |c: f32| {
+        let c = c.clamp(0.0, 1.0);
+        let s = if c <= 0.003_130_8 {
+            c * 12.92
+        } else {
+            1.055 * c.powf(1.0 / 2.4) - 0.055
+        };
+        (s * 255.0).round() as u32
+    };
+    channel(linear.x) | (channel(linear.y) << 8) | (channel(linear.z) << 16)
+}
+
 /// A point on a quadratic Bézier curve.
 pub(crate) fn bezier(points: &[Vec3; 3], t: f32) -> Vec3 {
     let u = 1.0 - t;

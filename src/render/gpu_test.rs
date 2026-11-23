@@ -491,6 +491,7 @@ mod generation;
 mod look;
 mod settings;
 mod stats;
+mod strands;
 mod trample;
 mod visibility;
 mod wind;

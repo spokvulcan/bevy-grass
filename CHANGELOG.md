@@ -36,6 +36,22 @@ use them.
   motion vectors. A blade of any other level is built once, and its motion
   vector is the camera's alone. It comes as 3, every level, which draws
   exactly as before.
+- `GrassSettings::strand_lods` and `GrassStrands`: how many levels of
+  detail, from the farthest, are strands and not triangles. A blade of such
+  a level is drawn in no pass of the grass. The compute pass writes it into
+  the camera's `GrassStrands` in the render world instead, 32 bytes each:
+  its root, where its tip lies as it is bent now, and its root's and tip's
+  colours before light, for a pass of the game's own to draw as a line one
+  pixel wide. It comes as 0, which draws exactly as before and hands out
+  nothing.
+
+**Changed**
+
+- The visible chunk slices are kept at the end of a camera's instance
+  buffer, not in a buffer of their own, so that `generate` can bind the
+  strand records and still bind no more than 10 storage buffers. A blade's
+  colour, `blade_color`, is worked out in `common.wesl`, so that the draws
+  and the strands share it.
 
 ## 0.20.6 (October 24, 2026)
 

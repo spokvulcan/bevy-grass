@@ -230,6 +230,7 @@ fn the_new_knobs_default_to_the_numbers_that_were_once_fixed() {
         assert_eq!(tier.max_widening, 2.5);
         assert_eq!(tier.turn_to_camera, 0.4);
         assert_eq!(tier.motion_lods, 3, "every blade's motion exact, as before");
+        assert_eq!(tier.strand_lods, 0, "every blade triangles, as before");
         assert_eq!(tier.orthographic_extent, 256.0);
         assert_eq!(tier.max_chunk_slices, 8192);
         assert_eq!(tier.readback_interval, 120);
@@ -251,6 +252,7 @@ fn the_new_knobs_are_clamped_and_named_like_the_others() {
         max_widening: 50.0,
         turn_to_camera: -2.0,
         motion_lods: 9,
+        strand_lods: 7,
         orthographic_extent: 1.0e9,
         max_chunk_slices: 0,
         trample_recovery: 0.0,
@@ -267,6 +269,7 @@ fn the_new_knobs_are_clamped_and_named_like_the_others() {
     assert_eq!(fixed.max_widening, GrassSettings::MAX_WIDENING);
     assert_eq!(fixed.turn_to_camera, 0.0);
     assert_eq!(fixed.motion_lods, 3);
+    assert_eq!(fixed.strand_lods, 2);
     assert_eq!(
         fixed.orthographic_extent,
         GrassSettings::MAX_ORTHOGRAPHIC_EXTENT
@@ -291,6 +294,7 @@ fn the_new_knobs_are_clamped_and_named_like_the_others() {
         "max_widening",
         "turn_to_camera",
         "motion_lods",
+        "strand_lods",
         "orthographic_extent",
         "max_chunk_slices",
         "trample_recovery",

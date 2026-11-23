@@ -29,9 +29,14 @@ use crate::{reach, trample};
 const INSTANCE_SIZE: u64 = 16;
 /// Bytes of the largest instance buffer a camera can have:
 /// `GrassSettings::MAX_INSTANCE_CAPACITY` blades at LOD 0 and half as many at
-/// each of LODs 1 and 2. No other binding of a view is as large.
+/// each of LODs 1 and 2, and after them the visible chunk slices, 16 bytes
+/// each. No other binding of a view is as large; the strand records of LODs
+/// 1 and 2 at most are as large as their instances and no more.
 pub(crate) const MAX_INSTANCE_BYTES: u64 =
-    2 * GrassSettings::MAX_INSTANCE_CAPACITY as u64 * INSTANCE_SIZE;
+    2 * GrassSettings::MAX_INSTANCE_CAPACITY as u64 * INSTANCE_SIZE
+        + GrassSettings::MAX_CHUNK_SLICES as u64 * 16;
+/// Bytes per [`GrassStrands`] record, `LooseStrand` in `common.wesl`.
+pub const STRAND_SIZE: u64 = 32;
 /// Bytes per `DrawIndexedIndirectArgs`.
 pub(crate) const DRAW_ARGS_SIZE: u64 = 20;
 /// `fixed_lod` value meaning "pick by distance".
@@ -91,6 +96,58 @@ pub(crate) struct ViewUniformData {
     /// Levels of detail below this are built again as they stood last frame
     /// for motion vectors (`GrassSettings::motion_lods`).
     pub motion_lods: u32,
+    /// How many levels of detail, from the farthest, are strands
+    /// (`GrassSettings::strand_lods`).
+    pub strand_lods: u32,
+    /// Records the view's strand buffer has room for.
+    pub strand_capacity: u32,
+    /// Where the visible chunk slices begin in the instance buffer, in
+    /// instances.
+    pub visible_base: u32,
+}
+
+/// The strands one camera's grass wrote this frame, in the render world, on
+/// the camera's render entity (the one with `ExtractedView`). Only while
+/// [`GrassSettings::strand_lods`](crate::GrassSettings::strand_lods) is above
+/// 0: the blades of the levels it names are drawn in no pass of the grass,
+/// and are written here, one record of 32 bytes each, for a pass of the
+/// game's own to draw as lines.
+///
+/// A record, packed from byte 0 of `records`, in WGSL:
+///
+/// ```wgsl
+/// struct LooseStrand {
+///     foot: vec3<f32>,   // where its foot is, world space, metres
+///     tall: f32,         // how far its tip lies from its foot, metres
+///     beside: vec2<f32>, // how far its tip lies beside its foot, world X and Z, metres, wind and all
+///     root: u32,         // its root's colour before light, sRGB, 8 bits a channel, red lowest
+///     tip: u32,          // its tip's colour, the same way
+/// }
+/// ```
+///
+/// The first `u32` of `count` is how many records `records` holds this
+/// frame, at most `capacity`. Both are written by the grass's compute
+/// passes, which run before any camera renders, every frame. The buffers
+/// are made anew when the settings change their size, and this component
+/// with them.
+#[derive(Component, Clone, Debug)]
+pub struct GrassStrands {
+    /// The records, `STORAGE`.
+    pub records: Buffer,
+    /// The number of records this frame at its first `u32`, `STORAGE`.
+    pub count: Buffer,
+    /// Records `records` has room for.
+    pub capacity: u32,
+}
+
+/// Records of strands a camera needs room for under `settings`: as many as
+/// the levels that are strands have instances.
+pub(crate) fn strand_capacity(settings: &GrassSettings, capacities: &[u32; 3]) -> u32 {
+    match settings.strand_lods {
+        0 => 0,
+        1 => capacities[2],
+        _ => capacities[1] + capacities[2],
+    }
 }
 
 /// Where the overflow check is in its cycle.
@@ -103,11 +160,17 @@ const READBACK_READY: u8 = 3;
 #[derive(Component)]
 pub(crate) struct GrassViewBuffers {
     pub uniform: UniformBuffer<ViewUniformData>,
-    visible: Buffer,
     pub counters: Buffer,
     pub dispatch: Buffer,
+    /// The three buckets of instances, then the visible chunk slices.
     instances: Buffer,
     pub draw_args: Buffer,
+    /// The strand records, [`GrassStrands::records`]; one record when there
+    /// are no strands, as a binding may not be empty.
+    strands: Buffer,
+    /// [`GrassStrands::count`].
+    strand_count: Buffer,
+    strand_capacity: u32,
     /// The trample window: one packed push per cell (see `trample.rs`).
     trample: Buffer,
     /// This frame's interactor stamps, three `vec4`s each (`trample::Stamp`).
@@ -155,6 +218,7 @@ impl GrassViewBuffers {
             settings.instance_capacity / 2,
         ];
         let total: u32 = capacities.iter().sum();
+        let strand_capacity = strand_capacity(settings, &capacities);
         let buffer = |label: &'static str, size: u64, usage: BufferUsages| {
             device.create_buffer(&BufferDescriptor {
                 label: Some(label),
@@ -165,15 +229,10 @@ impl GrassViewBuffers {
         };
         Self {
             uniform: UniformBuffer::default(),
-            visible: buffer(
-                "grass_visible_chunks",
-                // A `VisibleChunk`: one slice of a visible chunk, 16 bytes.
-                u64::from(settings.max_chunk_slices) * 16,
-                BufferUsages::STORAGE,
-            ),
             counters: buffer(
                 "grass_counters",
-                16,
+                // Blades in each bucket, visible slices and strands.
+                20,
                 BufferUsages::STORAGE | BufferUsages::COPY_DST | BufferUsages::COPY_SRC,
             ),
             dispatch: buffer(
@@ -183,7 +242,9 @@ impl GrassViewBuffers {
             ),
             instances: buffer(
                 "grass_instances",
-                u64::from(total) * INSTANCE_SIZE,
+                // A `VisibleChunk`, one slice of a visible chunk, is 16
+                // bytes, as an instance is.
+                (u64::from(total) + u64::from(settings.max_chunk_slices)) * INSTANCE_SIZE,
                 // The GPU readback test copies instances out.
                 if cfg!(test) {
                     BufferUsages::STORAGE | BufferUsages::COPY_SRC
@@ -201,6 +262,25 @@ impl GrassViewBuffers {
                     BufferUsages::STORAGE | BufferUsages::INDIRECT
                 },
             ),
+            strands: buffer(
+                "grass_strands",
+                u64::from(strand_capacity.max(1)) * STRAND_SIZE,
+                if cfg!(test) {
+                    BufferUsages::STORAGE | BufferUsages::COPY_SRC
+                } else {
+                    BufferUsages::STORAGE
+                },
+            ),
+            strand_count: buffer(
+                "grass_strand_count",
+                4,
+                if cfg!(test) {
+                    BufferUsages::STORAGE | BufferUsages::COPY_SRC
+                } else {
+                    BufferUsages::STORAGE
+                },
+            ),
+            strand_capacity,
             // Zeroed on creation: nothing is flattened yet.
             trample: buffer(
                 "grass_trample",
@@ -235,6 +315,7 @@ impl GrassViewBuffers {
     /// changes the capacity at runtime they do not, and are made again.
     fn fits(&self, settings: &GrassSettings) -> bool {
         self.capacities[0] == settings.instance_capacity
+            && self.strand_capacity == strand_capacity(settings, &self.capacities)
             && self.max_interactors == settings.max_interactors
             && self.max_slices == settings.max_chunk_slices
     }
@@ -243,6 +324,21 @@ impl GrassViewBuffers {
     #[cfg(test)]
     pub(crate) fn instances_buffer(&self) -> &Buffer {
         &self.instances
+    }
+
+    /// The strand buffers as the game is handed them, while there are any.
+    fn strands(&self) -> Option<GrassStrands> {
+        (self.strand_capacity > 0).then(|| GrassStrands {
+            records: self.strands.clone(),
+            count: self.strand_count.clone(),
+            capacity: self.strand_capacity,
+        })
+    }
+
+    /// The strand buffers, for the GPU readback test.
+    #[cfg(test)]
+    pub(crate) fn strand_buffers(&self) -> (&Buffer, &Buffer) {
+        (&self.strands, &self.strand_count)
     }
 
     /// Whether this frame's compute should copy the counters for the check.
@@ -331,10 +427,13 @@ pub(crate) fn prepare_views(
         // New views, and views whose capacity the game changed, get fresh
         // buffers; the bind groups that held the old ones go with them.
         let Some(mut buffers) = buffers.filter(|buffers| buffers.fits(&extracted.settings)) else {
-            commands.entity(entity).insert((
-                GrassViewBuffers::new(&device, &extracted.settings),
-                GrassViewBindGroups::default(),
-            ));
+            let buffers = GrassViewBuffers::new(&device, &extracted.settings);
+            let mut entity = commands.entity(entity);
+            match buffers.strands() {
+                Some(strands) => entity.insert(strands),
+                None => entity.remove::<GrassStrands>(),
+            };
+            entity.insert((buffers, GrassViewBindGroups::default()));
             continue;
         };
         // The resource's settings, with this camera's own over them.
@@ -350,6 +449,7 @@ pub(crate) fn prepare_views(
             settings,
             offset,
             &buffers.capacities,
+            buffers.strand_capacity,
             extracted
                 .shadow_light
                 .filter(|_| settings.shadows.cascades() > 0),
@@ -386,6 +486,7 @@ fn view_uniform(
     settings: &GrassSettings,
     distance_offset: f32,
     capacities: &[u32; 3],
+    strand_capacity: u32,
     shadow_light: Option<Vec3>,
 ) -> ViewUniformData {
     let world_from_view = view.world_from_view.to_matrix();
@@ -462,6 +563,14 @@ fn view_uniform(
         ),
         previous_from_world: Mat4::IDENTITY,
         motion_lods: settings.motion_lods,
+        // The buffers may still be those of other settings this frame.
+        strand_lods: if strand_capacity > 0 {
+            settings.strand_lods
+        } else {
+            0
+        },
+        strand_capacity,
+        visible_base: capacities.iter().sum(),
     }
 }
 
@@ -628,7 +737,7 @@ pub(crate) fn prepare_view_bind_groups(
             &pipeline_cache.get_bind_group_layout(&layouts.generate_view),
             &BindGroupEntries::with_indices((
                 (0, uniform.clone()),
-                (1, buffers.visible.as_entire_binding()),
+                (1, buffers.strands.as_entire_binding()),
                 (2, buffers.counters.as_entire_binding()),
                 (3, buffers.instances.as_entire_binding()),
                 (5, buffers.trample.as_entire_binding()),
@@ -641,6 +750,7 @@ pub(crate) fn prepare_view_bind_groups(
                 (0, uniform.clone()),
                 (2, buffers.counters.as_entire_binding()),
                 (4, buffers.draw_args.as_entire_binding()),
+                (7, buffers.strand_count.as_entire_binding()),
             )),
         ));
         groups.trample = Some(device.create_bind_group(

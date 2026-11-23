@@ -107,6 +107,7 @@ The first seven are set by the tier:
 | `mid_range_density` | 0.5 | A further share kept from `mid_range_start` on; the survivors widen to cover. Raise it for lusher mid-distance at a price |
 | `max_widening` | 2.5 | The most thinned blades widen, as a multiple of their width (1 to 3.2) |
 | `turn_to_camera` | 0.4 | How far an edge-on blade turns toward the camera: 0 thins to lines, 1 always faces it |
+| `motion_lods` | 3 | How many levels of detail, from the nearest, the prepass builds a second time as they stood last frame, for exact motion vectors (0 to 3). Any other level is built once and moves with the camera only: its sway is not in its motion vector. Only cameras with `MotionVectorPrepass` pay for either |
 | `orthographic_extent` | 256 m | Half the side of the square around an orthographic camera in which blades are stored (8 to 4,096). Blades further away are misplaced, so a map camera that sees a kilometre raises it; positions take 16 bits, so a bigger extent is coarser (8 mm at 256 m, 12 cm at 4,096 m) |
 | `max_chunk_slices` | 8,192 | Slices of visible chunks a camera generates a frame (1 to 65,535; 16 bytes each). A very dense style or a long radius needs more; `GrassStats::gpu.slices` shows what is used |
 | `readback_interval` | 120 | Frames between the GPU counter readbacks behind `GrassStats` and the overflow warnings; 0 never reads them |

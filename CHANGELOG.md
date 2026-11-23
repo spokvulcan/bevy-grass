@@ -31,6 +31,11 @@ use them.
   part of a tilt that says where blades stand, for a round world whose
   fields each have another up. The blades still grow upright. The CPU side
   (`GrassSampler`, brushes, edits) does not know the lean.
+- `GrassSettings::motion_lods`: how many levels of detail, from the nearest,
+  the prepass builds a second time as they stood last frame, for exact
+  motion vectors. A blade of any other level is built once, and its motion
+  vector is the camera's alone. It comes as 3, every level, which draws
+  exactly as before.
 
 ## 0.20.6 (October 24, 2026)
 

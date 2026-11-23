@@ -156,6 +156,16 @@ pub struct GrassSettings {
     /// 0 (never; blades thin out to lines when seen side-on) to 1 (it
     /// always faces the camera, which flattens the grass).
     pub turn_to_camera: f32,
+    /// How many levels of detail, from the nearest, are built a second time
+    /// as they stood last frame for their motion vectors, 0 to 3. A level
+    /// built twice says how each blade swayed; any other level says only
+    /// how the camera moved, as if the blade stood still, and is built once
+    /// in the prepass. Only cameras that ask for motion
+    /// vectors (temporal anti-aliasing, motion blur) pay for either. 3, the
+    /// default, builds every blade twice; 1 keeps the sway of the full-detail
+    /// blades only, whose sway a temporal filter would otherwise smear the
+    /// most.
+    pub motion_lods: u32,
 
     // Limits of the view.
     /// Half the side of the square around an orthographic camera in which
@@ -257,6 +267,7 @@ impl GrassSettings {
         mid_range_density: 0.5,
         max_widening: 2.5,
         turn_to_camera: 0.4,
+        motion_lods: 3,
         orthographic_extent: 256.0,
         max_chunk_slices: 8192,
         readback_interval: 120,
@@ -322,6 +333,7 @@ impl GrassSettings {
             max_widening: finite(self.max_widening, high.max_widening)
                 .clamp(1.0, Self::MAX_WIDENING),
             turn_to_camera: finite(self.turn_to_camera, high.turn_to_camera).clamp(0.0, 1.0),
+            motion_lods: self.motion_lods.min(3),
             orthographic_extent: finite(self.orthographic_extent, high.orthographic_extent)
                 .clamp(8.0, Self::MAX_ORTHOGRAPHIC_EXTENT),
             max_chunk_slices: self.max_chunk_slices.clamp(1, Self::MAX_CHUNK_SLICES),
@@ -387,6 +399,7 @@ impl GrassSettings {
             mid_range_density,
             max_widening,
             turn_to_camera,
+            motion_lods,
             orthographic_extent,
             max_chunk_slices,
             trample_recovery,

@@ -92,6 +92,10 @@ struct View {
     /// Where a point now lay in last frame's world: the identity, but in the
     /// frame a game moves its origin (`GrassMoved`).
     previous_from_world: mat4x4<f32>,
+    /// Levels of detail below this are built again as they stood last frame,
+    /// for exact motion vectors; the others move with the camera only
+    /// (`GrassSettings::motion_lods`).
+    motion_lods: u32,
 }
 
 /// One field. Mirrors `FieldGpu` in `gpu_layout.rs`.

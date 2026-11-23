@@ -73,7 +73,10 @@ come from a shadow-casting `DirectionalLight`.
 Deferred grass matches forward grass closely. It approximates translucency
 less well, and toon bands are forward-only. Thin blades shimmer without
 anti-aliasing; TAA is recommended, and grass supplies exact motion vectors
-for it. The [`passes`](../examples/passes.rs) example shows each path.
+for it. To build them, the prepass builds each blade twice, as it stands and
+as it stood last frame. `GrassSettings::motion_lods` builds only the nearest
+levels of detail twice: the others are built once and given the camera's
+motion alone, as if they stood still. The [`passes`](../examples/passes.rs) example shows each path.
 
 ## Bind groups and the storage-buffer budget
 

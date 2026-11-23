@@ -4,9 +4,12 @@
 //! its empty group and 2 is the grass group, as in the other grass draws.
 //! What Bevy's prepass expects of its outputs is in `bevy_bridge`.
 //!
-//! Motion vectors are exact: the blade is built a second time as it stood
-//! last frame, with last frame's bend, clock and camera. A game that moved
-//! its origin this frame says how in `GrassMoved`.
+//! Motion vectors are exact for the levels of detail below
+//! `GrassSettings::motion_lods`: the blade is built a second time as it stood
+//! last frame, with last frame's bend, clock and camera. A blade of any other
+//! level is built once and taken to have stood still, so its motion vector
+//! is the camera's alone. A game that moved its origin this frame says how in
+//! `GrassMoved`.
 
 import package::shaders::bevy_bridge::{
     view_world_from_view, view_clip_from_view, view_clip_from_world, view_viewport_width,
@@ -74,16 +77,19 @@ fn vertex(
     // stands, and the blade as it stood back into last frame's, where Bevy
     // asks that camera. Both are the identity but when the origin moved.
     let moved = grass_view.previous_from_world;
-    let previous = blade_vertex(
-        blade_at,
-        previous_eye(
-            previous_view_from_world() * moved,
-            previous_clip_from_view(),
-            previous_clip_from_world() * moved,
-            view_viewport_width(),
-        ),
-    );
-    out.previous_world_position = moved * vec4<f32>(previous.world_position, 1.0);
+    var stood = blade.world_position;
+    if blade_at.lod < grass_view.motion_lods {
+        stood = blade_vertex(
+            blade_at,
+            previous_eye(
+                previous_view_from_world() * moved,
+                previous_clip_from_view(),
+                previous_clip_from_world() * moved,
+                view_viewport_width(),
+            ),
+        ).world_position;
+    }
+    out.previous_world_position = moved * vec4<f32>(stood, 1.0);
 }
 
 @if(DEFERRED_PREPASS) {

@@ -41,7 +41,9 @@ Eight of the 36 presets. [All of them are in docs/presets.md](https://github.com
   dry tips and dead blades. Every kind is optional and costs nothing when off.
 - **Part of Bevy's renderer.** Grass casts and receives shadows and is fogged.
   It draws into the depth, normal and motion-vector prepass (SSAO and TAA see
-  it, with exact motion vectors) and into the deferred G-buffer.
+  it, with exact motion vectors, or for less the camera's motion alone beyond
+  the nearest blades, `GrassSettings::motion_lods`) and into the deferred
+  G-buffer.
 - **Works with Rapier and Avian.** Physics bodies flatten the grass in the
   shape of their colliders.
 - **Runs in the browser** through WebGPU, with the same shaders and settings

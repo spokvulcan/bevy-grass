@@ -88,6 +88,9 @@ pub(crate) struct ViewUniformData {
     pub limits: Vec4,
     /// Where a point now lay in last frame's world (`GrassMoved`).
     pub previous_from_world: Mat4,
+    /// Levels of detail below this are built again as they stood last frame
+    /// for motion vectors (`GrassSettings::motion_lods`).
+    pub motion_lods: u32,
 }
 
 /// Where the overflow check is in its cycle.
@@ -458,6 +461,7 @@ fn view_uniform(
             height_range,
         ),
         previous_from_world: Mat4::IDENTITY,
+        motion_lods: settings.motion_lods,
     }
 }
 

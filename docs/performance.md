@@ -256,7 +256,7 @@ Paired runs against the M3 build, four rounds each, T1200. The bench's styles ke
 | Sheen on, roughness left constant | about the same | about the same | Not kept: losing constant roughness was not the cost. |
 | **Sheen on, amount computed per vertex** (one varying) | **+0.19 ms** | **+0.05 ms** | **Kept:** 20–30% less than per fragment in a paired run, and simpler. |
 
-The prepass and deferred paths cost nothing unless a camera has a prepass or is deferred; DEMO ARPG GAME's has neither. With a prepass, grass is drawn twice (prepass and lit pass), as every opaque mesh is; with motion vectors its vertex shader builds each blade twice.
+The prepass and deferred paths cost nothing unless a camera has a prepass or is deferred; DEMO ARPG GAME's has neither. With a prepass, grass is drawn twice (prepass and lit pass), as every opaque mesh is; with motion vectors its vertex shader builds each blade twice, unless `motion_lods` says to build only the nearest levels twice.
 
 Lesson: **put optional look terms behind shader definitions from the start.** Even a term set to zero costs fragment time when it is compiled in, because the compiler cannot fold it.
 

@@ -205,8 +205,7 @@ fn packing_round_trips_within_quantization() {
         height: 0.75,
         width: 0.2,
         seed: 201,
-        lod: 2,
-        field: 17,
+        field: 1000,
         clump: 45,
         bend: Vec2::new(-0.5, 0.25),
         previous_bend: Vec2::new(-0.47, 0.21),
@@ -225,8 +224,8 @@ fn packing_round_trips_within_quantization() {
     assert!((back.height - blade.height).abs() <= 0.5 / 255.0);
     assert!((back.width - blade.width).abs() <= 0.5 / 255.0);
     assert_eq!(
-        (back.seed, back.lod, back.field, back.clump),
-        (blade.seed, blade.lod, blade.field, blade.clump)
+        (back.seed, back.field, back.clump),
+        (blade.seed, blade.field, blade.clump)
     );
     assert!((back.bend - blade.bend).abs().max_element() <= 1.0 / 4095.0 + 1e-6);
     assert!(

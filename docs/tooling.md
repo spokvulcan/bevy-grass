@@ -17,7 +17,7 @@ fn hud(stats: Res<GrassStats>) {
         warn!("grass buffers overflowed: raise GrassSettings::instance_capacity");
     }
     if stats.tables.fields_dropped > 0 {
-        warn!("{} fields are not drawn: the tables hold 256 entries", stats.tables.fields_dropped);
+        warn!("{} fields are not drawn: the tables hold 1,024 entries", stats.tables.fields_dropped);
     }
 }
 ```

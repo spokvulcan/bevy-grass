@@ -58,7 +58,7 @@ pub struct TableStats {
     pub fields: usize,
     /// Chunks of 16 m in the tables.
     pub chunks: usize,
-    /// Fields left out because the tables hold 256 entries, each species of a
+    /// Fields left out because the tables hold 1,024 entries, each species of a
     /// field counting as one. These are not drawn.
     pub fields_dropped: usize,
     /// Species left out because a field mixes at most 16, its own blades

@@ -305,8 +305,8 @@ fn pack(blade: BladeData, origin: vec4<f32>, height_range: f32) -> vec4<u32> {
     return vec4<u32>(
         x | (z << 16u),
         y | (facing << 16u) | ((blade.seed & 0xffu) << 24u),
-        quantize(blade.height, 255.0) | (quantize(blade.width, 255.0) << 8u) | ((blade.field & 0xffu) << 16u)
-            | ((blade.lod & 3u) << 24u) | ((blade.clump & 63u) << 26u),
+        quantize(blade.height, 255.0) | (quantize(blade.width, 255.0) << 8u) | ((blade.field & 0x3ffu) << 16u)
+            | ((blade.clump & 63u) << 26u),
         pack_bend(blade.bend.x, blade.previous_bend.x) | (pack_bend(blade.bend.y, blade.previous_bend.y) << 16u),
     );
 }
@@ -330,7 +330,7 @@ struct Instance {
 /// `View::limits.w`.
 fn unpack(words: vec4<u32>, origin: vec4<f32>, height_range: f32) -> Instance {
     var out: Instance;
-    out.field = (words.z >> 16u) & 0xffu;
+    out.field = (words.z >> 16u) & 0x3ffu;
     out.root = origin.xyz + vec3<f32>(
         (f32(words.x & 0xffffu) / 65535.0 - 0.5) * 2.0 * origin.w,
         (f32(words.y & 0xffffu) / 65535.0 - 0.5) * 2.0 * height_range,

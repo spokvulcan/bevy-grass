@@ -153,7 +153,7 @@ fn gpu_far_blades_are_written_as_strands_and_drawn_as_none() {
     for _ in 0..3 {
         app.update();
     }
-    let (before_view, before) = gpu_words(&mut app).expect("grass");
+    let (before_view, before) = gpu_words_and_lods(&mut app).expect("grass");
     let (none, handed) = gpu_strands(&mut app);
     assert!(
         none.is_empty() && handed.is_none(),
@@ -161,8 +161,8 @@ fn gpu_far_blades_are_written_as_strands_and_drawn_as_none() {
     );
     let far: Vec<[u32; 4]> = before
         .iter()
-        .copied()
-        .filter(|w| (w[2] >> 24) & 3 >= 1)
+        .filter(|(_, lod)| *lod >= 1)
+        .map(|(words, _)| *words)
         .collect();
     let near_blades = before.len() - far.len();
     assert!(
@@ -178,7 +178,7 @@ fn gpu_far_blades_are_written_as_strands_and_drawn_as_none() {
     for _ in 0..5 {
         app.update();
     }
-    let (view, after) = gpu_words(&mut app).expect("grass");
+    let (view, after) = gpu_words_and_lods(&mut app).expect("grass");
     let (strands, handed) = gpu_strands(&mut app);
     let handed = handed.expect("the strands are handed out");
     assert_eq!(view.strand_lods, 2);
@@ -189,7 +189,7 @@ fn gpu_far_blades_are_written_as_strands_and_drawn_as_none() {
     );
     // No triangle for a far blade, and every near blade as before.
     assert!(
-        after.iter().all(|w| (w[2] >> 24) & 3 == 0),
+        after.iter().all(|(_, lod)| *lod == 0),
         "a far blade is still an instance"
     );
     assert_eq!(after.len(), near_blades);

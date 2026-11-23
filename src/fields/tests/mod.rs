@@ -650,9 +650,9 @@ fn rebuilds_are_counted_and_timed_and_showing_a_field_is_not_one() {
 
 #[test]
 fn the_limits_that_drop_content_are_visible_to_the_game() {
-    // 256 entries: 260 one-species fields leave the last four out.
+    // MAX_ENTRIES one-species fields fit, and four more are left out.
     let mut app = app();
-    for _ in 0..260 {
+    for _ in 0..MAX_ENTRIES + 4 {
         spawn_field(&mut app, ());
     }
     settle(&mut app);

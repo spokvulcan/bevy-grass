@@ -42,9 +42,9 @@ use crate::{GrassStats, GrassSystems};
 /// measurement says otherwise.
 pub(crate) const CHUNK_SIZE: f32 = 16.0;
 
-/// Entries beyond this index cannot be addressed by an instance's 8-bit
+/// Entries beyond this index cannot be addressed by an instance's 10-bit
 /// field index. Every species of a field is an entry.
-const MAX_ENTRIES: usize = 256;
+pub(crate) const MAX_ENTRIES: usize = 1024;
 
 impl FieldGpu {
     /// The field's X axis in world XZ. An entry built by hand, with no axis,
@@ -796,7 +796,7 @@ struct Dropped {
 }
 
 /// Which entries each field gets, and where its images sit in the tables.
-/// Fields beyond the table's 256 entries are left out.
+/// Fields beyond the table's `MAX_ENTRIES` entries are left out.
 fn plan<'a>(inputs: &'a [Input<'a>]) -> (Vec<Plan<'a>>, Dropped) {
     let mut plans = Vec::with_capacity(inputs.len());
     let mut dropped = Dropped::default();

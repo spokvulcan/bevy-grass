@@ -72,6 +72,21 @@ fn gpu_words(app: &mut App) -> Option<(ViewUniformData, Vec<[u32; 4]>)> {
 /// The same for one camera, named by its main-world entity; `None`: the
 /// first grass view.
 fn gpu_words_of(app: &mut App, camera: Option<Entity>) -> Option<(ViewUniformData, Vec<[u32; 4]>)> {
+    let (uniform, words) = gpu_words_and_lods_of(app, camera)?;
+    Some((uniform, words.into_iter().map(|(words, _)| words).collect()))
+}
+
+/// Every instance of the first grass view with its level of detail, which an
+/// instance does not carry: the level of the bucket it lies in.
+fn gpu_words_and_lods(app: &mut App) -> Option<(ViewUniformData, Vec<([u32; 4], u32)>)> {
+    gpu_words_and_lods_of(app, None)
+}
+
+/// The same for one camera, named by its main-world entity.
+fn gpu_words_and_lods_of(
+    app: &mut App,
+    camera: Option<Entity>,
+) -> Option<(ViewUniformData, Vec<([u32; 4], u32)>)> {
     let world = app.sub_app_mut(RenderApp).world_mut();
     let device = world.resource::<RenderDevice>().clone();
     let queue = world.resource::<RenderQueue>().clone();
@@ -92,12 +107,15 @@ fn gpu_words_of(app: &mut App, camera: Option<Entity>) -> Option<(ViewUniformDat
         let base = uniform.bucket_base[bucket] as usize;
         let count = count.min(uniform.bucket_capacity[bucket]) as usize;
         for i in base..base + count {
-            out.push([
-                instances[i * 4],
-                instances[i * 4 + 1],
-                instances[i * 4 + 2],
-                instances[i * 4 + 3],
-            ]);
+            out.push((
+                [
+                    instances[i * 4],
+                    instances[i * 4 + 1],
+                    instances[i * 4 + 2],
+                    instances[i * 4 + 3],
+                ],
+                uniform.bucket_lod[bucket],
+            ));
         }
     }
     Some((uniform, out))
@@ -228,10 +246,6 @@ fn cpu_instances(tables: &FieldTables, view: &ViewUniformData) -> Vec<[u32; 3]> 
             {
                 continue;
             }
-            let lod = lod_table.lod(
-                distance,
-                shader_model::unit(shader_model::hash(candidate.seed ^ 0x10d)),
-            );
             let width = field.shape.z
                 * (0.75 + 0.5 * shader_model::unit(shader_model::hash(candidate.seed ^ 0x77)))
                 * mirror::coverage_width(falloff, view.limits.x);
@@ -248,7 +262,6 @@ fn cpu_instances(tables: &FieldTables, view: &ViewUniformData) -> Vec<[u32; 3]> 
                 quantize(height / field.shape.y, 255.0)
                     | (quantize(width / (mirror::WIDTH_RANGE * field.shape.z), 255.0) << 8)
                     | (chunk.ids.x << 16)
-                    | (lod << 24)
                     | (u32::from(mirror::clump_of(Vec2::new(root.x, root.z))) << 26),
             ]);
         }
@@ -454,10 +467,10 @@ fn wait_for_grass(app: &mut App) {
 
 /// Blades per level of detail among a view's instances.
 fn blades_per_lod(app: &mut App) -> [usize; 3] {
-    let (_, instances) = gpu_instances(app).expect("a grass view");
+    let (_, instances) = gpu_words_and_lods(app).expect("a grass view");
     let mut counts = [0; 3];
-    for words in instances {
-        counts[((words[2] >> 24) & 3) as usize] += 1;
+    for (_, lod) in instances {
+        counts[lod as usize] += 1;
     }
     counts
 }

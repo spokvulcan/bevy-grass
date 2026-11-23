@@ -49,6 +49,12 @@ use them.
 
 **Changed**
 
+- The tables hold 1,024 entries, not 256, each species of a field counting
+  as one, so a game that gives grass to many regions round the eye leaves no
+  field out. An instance carries a 10-bit field index in the two bits its
+  level of detail took, which no draw read: a draw knows the level from its
+  own vertex code.
+
 - The visible chunk slices are kept at the end of a camera's instance
   buffer, not in a buffer of their own, so that `generate` can bind the
   strand records and still bind no more than 10 storage buffers. A blade's

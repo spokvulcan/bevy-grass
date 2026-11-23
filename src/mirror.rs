@@ -184,10 +184,9 @@ pub(crate) struct Blade {
     pub width: f32,
     /// Low bits of the blade's seed: colour variation and sway phase.
     pub seed: u8,
-    /// Level of detail, 0–2.
-    pub lod: u8,
-    /// Index into the field table.
-    pub field: u8,
+    /// Index into the field table, below `MAX_ENTRIES`. The level of detail
+    /// is not packed: a draw knows it from its own vertex code.
+    pub field: u16,
     /// The blade's clump, 0–63: blades in the same 1 m clump share a tint.
     pub clump: u8,
     /// Tip offset from wind and interaction this frame, as a fraction of the
@@ -234,7 +233,7 @@ pub(crate) fn unpack_bend(bits: u32) -> (f32, f32) {
 /// | --- | --- |
 /// | 0 | x (16), z (16), over ±`extent` around the view's instance origin |
 /// | 1 | y (16) over ±`HEIGHT_RANGE`, facing (8), seed (8) |
-/// | 2 | height (8), width (8), field (8), LOD (2), flags (6) |
+/// | 2 | height (8), width (8), field (10), clump (6) |
 /// | 3 | bend x and z (16 each: 12 for this frame, 4 for last frame's as a step from it) |
 pub(crate) fn pack(blade: &Blade, extent: f32) -> [u32; 4] {
     let x = quantize(blade.position.x / (2.0 * extent) + 0.5, 16);
@@ -246,8 +245,7 @@ pub(crate) fn pack(blade: &Blade, extent: f32) -> [u32; 4] {
         y | (facing << 16) | (u32::from(blade.seed) << 24),
         quantize(blade.height, 8)
             | (quantize(blade.width, 8) << 8)
-            | (u32::from(blade.field) << 16)
-            | ((u32::from(blade.lod) & 3) << 24)
+            | ((u32::from(blade.field) & 0x3ff) << 16)
             | ((u32::from(blade.clump) & 63) << 26),
         pack_bend(blade.bend.x, blade.previous_bend.x)
             | (pack_bend(blade.bend.y, blade.previous_bend.y) << 16),
@@ -268,8 +266,7 @@ pub(crate) fn unpack(words: [u32; 4], extent: f32) -> Blade {
         height: dequantize(words[2] & 0xff, 8),
         width: dequantize((words[2] >> 8) & 0xff, 8),
         seed: (words[1] >> 24) as u8,
-        lod: ((words[2] >> 24) & 3) as u8,
-        field: ((words[2] >> 16) & 0xff) as u8,
+        field: ((words[2] >> 16) & 0x3ff) as u16,
         clump: (words[2] >> 26) as u8,
         bend: Vec2::new(bend_x.0, bend_z.0),
         previous_bend: Vec2::new(bend_x.1, bend_z.1),
